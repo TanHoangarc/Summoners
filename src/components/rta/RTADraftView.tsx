@@ -10,6 +10,7 @@ import {
   Play,
   CheckCircle2,
   BookmarkCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import { Monster, RTAMatchRecord, RTASlot } from '../../types';
 import { getMonsterById } from '../../utils/monsterHelpers';
@@ -101,6 +102,7 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
 
   // Toast feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [matchToDelete, setMatchToDelete] = useState<RTAMatchRecord | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -285,8 +287,10 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     return (
       <div
         key={`${side}-${index}`}
-        className={`relative transition-transform ${
-          isSelected ? 'ring-2 ring-teal-400 rounded-2xl scale-105' : ''
+        className={`relative transition-all rounded-2xl ${
+          isSelected
+            ? 'ring-2 ring-teal-400 ring-offset-2 ring-offset-[#141b2d] z-10'
+            : 'hover:ring-1 hover:ring-slate-600'
         }`}
         onClick={() => setSelectedSlotRef({ side, index })}
       >
@@ -298,6 +302,7 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
           isLeader={slot.isLeader}
           isBanned={slot.isBanned}
           showQuickControls={true}
+          showTooltip={false}
           onClick={() => setActivePickerSlot({ side, index })}
           onToggleBan={() => toggleBan(side, index)}
           onToggleLeader={() => toggleLeader(side, index)}
@@ -323,7 +328,7 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
   return (
     <div className="space-y-6">
       {/* Sleek Minimalist Controls Bar (No redundant text) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-lg">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-lg">
         {/* First Pick Toggle */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-slate-400">1ST Pick:</span>
@@ -331,7 +336,7 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
             <button
               type="button"
               onClick={() => applyFirstPickOrders('mine')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                 firstPickSide === 'mine'
                   ? 'bg-blue-600 text-white shadow'
                   : 'text-slate-400 hover:text-white'
@@ -342,7 +347,7 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
             <button
               type="button"
               onClick={() => applyFirstPickOrders('enemy')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                 firstPickSide === 'enemy'
                   ? 'bg-blue-600 text-white shadow'
                   : 'text-slate-400 hover:text-white'
@@ -358,38 +363,38 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
           <button
             type="button"
             onClick={handleResetDraft}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            Làm mới
+            <span>Làm mới</span>
           </button>
           <button
             type="button"
             onClick={handleSaveCurrentDraft}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-black shadow-lg shadow-emerald-500/20 transition-all cursor-pointer active:scale-95"
+            className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-black shadow-lg shadow-emerald-500/20 transition-all cursor-pointer active:scale-95"
             title="Lưu trực tiếp đội hình 5v5 từ bàn cờ ở trên vào lịch sử"
           >
             <BookmarkCheck className="w-4 h-4 stroke-[2.5]" />
-            Lưu Lịch Sử Đấu
+            <span>Lưu Lịch Sử Đấu</span>
           </button>
         </div>
       </div>
 
       {/* THE MAIN BATTLE BOARD - EXACT LAYOUT FROM USER'S IMAGE */}
-      <div className="bg-[#141b2d] border border-slate-800/90 rounded-3xl px-5 py-8 sm:px-8 sm:py-10 shadow-2xl overflow-x-auto flex justify-center">
-        <div className="min-w-fit flex items-center justify-center gap-4 sm:gap-6 md:gap-8 select-none pt-4 pb-2">
+      <div className="bg-[#141b2d] border border-slate-800/90 rounded-2xl sm:rounded-3xl p-3 sm:p-6 md:p-8 shadow-2xl overflow-x-auto">
+        <div className="w-max min-w-full flex items-center justify-center gap-2 min-[420px]:gap-3 sm:gap-6 md:gap-8 select-none py-2 px-1">
           
           {/* LEFT TEAM (5 MONSTERS) */}
           {firstPickSide === 'mine' ? (
             /* 1 - 2 - 2 (Team Tôi là 1st Pick) */
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3">
               {/* Standalone Slot 1 on outer flank */}
               <div className="flex items-center justify-center">
                 {renderSlot('mine', getIndexByOrder(myTeam, 1), 'lg')}
               </div>
 
               {/* 2x2 Grid: Col 1 = [4, 5], Col 2 = [8, 9] */}
-              <div className="grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
+              <div className="grid grid-cols-2 grid-rows-2 gap-1.5 min-[400px]:gap-2 sm:gap-3">
                 {renderSlot('mine', getIndexByOrder(myTeam, 4), 'lg')}
                 {renderSlot('mine', getIndexByOrder(myTeam, 8), 'lg')}
                 {renderSlot('mine', getIndexByOrder(myTeam, 5), 'lg')}
@@ -398,9 +403,9 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
             </div>
           ) : (
             /* 2 - 2 - 1 (Team Tôi là 2nd Pick) */
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3">
               {/* 2x2 Grid first: Col 1 = [2, 3], Col 2 = [6, 7] */}
-              <div className="grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
+              <div className="grid grid-cols-2 grid-rows-2 gap-1.5 min-[400px]:gap-2 sm:gap-3">
                 {renderSlot('mine', getIndexByOrder(myTeam, 2), 'lg')}
                 {renderSlot('mine', getIndexByOrder(myTeam, 6), 'lg')}
                 {renderSlot('mine', getIndexByOrder(myTeam, 3), 'lg')}
@@ -415,18 +420,18 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
           )}
 
           {/* CENTER: Crossed Swords Circle */}
-          <div className="flex items-center justify-center px-1 shrink-0">
-            <div className="w-11 h-11 sm:w-13 sm:h-13 rounded-full bg-[#1b253b] border border-slate-700/80 flex items-center justify-center text-slate-400 shadow-inner">
-              <Swords className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2]" />
+          <div className="flex items-center justify-center px-0.5 sm:px-1 shrink-0">
+            <div className="w-9 h-9 min-[400px]:w-10 min-[400px]:h-10 sm:w-12 sm:h-12 md:w-13 md:h-13 rounded-full bg-[#1b253b] border border-slate-700/80 flex items-center justify-center text-slate-400 shadow-inner">
+              <Swords className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 stroke-[2]" />
             </div>
           </div>
 
           {/* RIGHT TEAM (5 MONSTERS) */}
           {firstPickSide === 'mine' ? (
             /* 2 - 2 - 1 (Team Địch là 2nd Pick) */
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3">
               {/* 2x2 Grid first: Col 1 = [2, 3], Col 2 = [6, 7] */}
-              <div className="grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
+              <div className="grid grid-cols-2 grid-rows-2 gap-1.5 min-[400px]:gap-2 sm:gap-3">
                 {renderSlot('enemy', getIndexByOrder(enemyTeam, 2), 'lg')}
                 {renderSlot('enemy', getIndexByOrder(enemyTeam, 6), 'lg')}
                 {renderSlot('enemy', getIndexByOrder(enemyTeam, 3), 'lg')}
@@ -440,14 +445,14 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
             </div>
           ) : (
             /* 1 - 2 - 2 (Team Địch là 1st Pick) */
-            <div className="flex items-center gap-2 sm:gap-3">
+            <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3">
               {/* Standalone Slot 1 near center */}
               <div className="flex items-center justify-center">
                 {renderSlot('enemy', getIndexByOrder(enemyTeam, 1), 'lg')}
               </div>
 
               {/* 2x2 Grid after: Col 1 = [4, 5], Col 2 = [8, 9] */}
-              <div className="grid grid-cols-2 grid-rows-2 gap-2 sm:gap-3">
+              <div className="grid grid-cols-2 grid-rows-2 gap-1.5 min-[400px]:gap-2 sm:gap-3">
                 {renderSlot('enemy', getIndexByOrder(enemyTeam, 4), 'lg')}
                 {renderSlot('enemy', getIndexByOrder(enemyTeam, 8), 'lg')}
                 {renderSlot('enemy', getIndexByOrder(enemyTeam, 5), 'lg')}
@@ -461,53 +466,72 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
 
       {/* QUICK SLOT TOOLBAR (Appears when clicking any slot to easily edit/ban/leader) */}
       {selectedSlotRef && (
-        <div className="flex items-center justify-between p-3 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl animate-in fade-in text-xs">
-          <div className="flex items-center gap-3">
-            <span className="text-slate-400 font-semibold">
-              Vị trí đang chọn: #{selectedSlot?.pickOrder} ({selectedSlotRef.side === 'mine' ? 'Team Tôi' : 'Team Địch'})
-            </span>
-            <span className="text-white font-bold">
-              {selectedMonster ? selectedMonster.name : '(Chưa chọn pet)'}
-            </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 sm:p-3.5 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl animate-in fade-in text-xs">
+          <div className="flex items-center justify-between sm:justify-start gap-2.5">
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 font-semibold text-[11px] sm:text-xs">
+                Vị trí #{selectedSlot?.pickOrder} ({selectedSlotRef.side === 'mine' ? 'Team Tôi' : 'Team Địch'}):
+              </span>
+              <span className="text-teal-300 font-bold text-xs sm:text-sm">
+                {selectedMonster ? selectedMonster.name : '(Chưa chọn pet)'}
+              </span>
+            </div>
+            {/* Close button for mobile inside header row */}
+            <button
+              type="button"
+              onClick={() => setSelectedSlotRef(null)}
+              className="sm:hidden p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              title="Đóng"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
             <button
               type="button"
               onClick={() => setActivePickerSlot(selectedSlotRef)}
-              className="px-3 py-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold rounded-xl cursor-pointer"
+              className="flex-1 sm:flex-initial px-3 py-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold rounded-xl cursor-pointer text-center text-xs"
             >
               Đổi Pet
             </button>
             <button
               type="button"
               onClick={() => toggleBan(selectedSlotRef.side, selectedSlotRef.index)}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+              className={`flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer text-xs ${
                 selectedSlot?.isBanned
                   ? 'bg-rose-500 text-white'
                   : 'bg-slate-800 hover:bg-slate-700 text-rose-300'
               }`}
             >
               <Ban className="w-3.5 h-3.5 stroke-[2.5]" />
-              {selectedSlot?.isBanned ? 'Bỏ Cấm' : 'Cấm (Ban)'}
+              {selectedSlot?.isBanned ? 'Bỏ Cấm' : 'Cấm'}
             </button>
             <button
               type="button"
               onClick={() => toggleLeader(selectedSlotRef.side, selectedSlotRef.index)}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer ${
+              className={`flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer text-xs ${
                 selectedSlot?.isLeader
                   ? 'bg-amber-400 text-slate-950'
                   : 'bg-slate-800 hover:bg-slate-700 text-amber-300'
               }`}
             >
               <Crown className="w-3.5 h-3.5 fill-current" />
-              {selectedSlot?.isLeader ? 'Bỏ Lead' : 'Đặt Leader'}
+              {selectedSlot?.isLeader ? 'Bỏ Lead' : 'Đặt Lead'}
             </button>
             <button
               type="button"
               onClick={() => clearSlot(selectedSlotRef.side, selectedSlotRef.index)}
-              className="p-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-800 cursor-pointer"
+              className="px-2 py-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-800 cursor-pointer text-xs"
               title="Xóa slot"
+            >
+              Xóa
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedSlotRef(null)}
+              className="hidden sm:inline-flex p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+              title="Đóng"
             >
               <X className="w-4 h-4" />
             </button>
@@ -571,7 +595,7 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
                 };
 
                 return (
-                  <div className="flex items-center justify-center gap-2 sm:gap-3 py-1 shrink-0">
+                  <div className="w-full md:w-auto overflow-x-auto flex items-center justify-center gap-2 sm:gap-3 py-1 shrink-0">
                     {/* Left team */}
                     {isMyFirst ? (
                       /* 1 - 2 - 2 */
@@ -765,7 +789,7 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDeleteMatch(record.id)}
+                  onClick={() => setMatchToDelete(record)}
                   className="p-1.5 text-slate-500 hover:text-red-400 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
                   title="Xóa trận đấu khỏi lịch sử"
                 >
@@ -782,6 +806,79 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
         <div className="fixed bottom-6 right-6 z-50 bg-slate-900 border border-teal-500/50 text-white px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-bold animate-in fade-in slide-in-from-bottom-2">
           <CheckCircle2 className="w-4 h-4 text-teal-400" />
           <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Delete Match Confirmation Modal (Yes / No) */}
+      {matchToDelete && (
+        <div
+          id="delete-match-modal-backdrop"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setMatchToDelete(null)}
+        >
+          <div
+            id="delete-match-modal"
+            className="w-full max-w-sm bg-slate-900 border border-slate-700/80 rounded-2xl p-5 space-y-4 shadow-2xl text-slate-100 animate-in zoom-in-95 duration-150 ring-1 ring-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-bold text-white tracking-tight">
+                  Xóa Lịch Sử Trận Đấu
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Bạn có chắc chắn muốn xóa trận đấu này khỏi lịch sử?
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMatchToDelete(null)}
+                className="text-slate-500 hover:text-slate-300 p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Đóng"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1.5 text-xs text-slate-300">
+              <div className="flex items-center justify-between font-semibold text-slate-200">
+                <span>{matchToDelete.title || 'Trận đấu RTA'}</span>
+                <span className="text-[10px] text-slate-400 font-normal">
+                  {new Date(matchToDelete.createdAt).toLocaleDateString('vi-VN')}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Ghi chú: {matchToDelete.notes || 'Không có ghi chú'}
+              </p>
+            </div>
+
+            {/* Yes / No Action Buttons */}
+            <div className="flex items-center gap-2.5 pt-1">
+              <button
+                id="btn-confirm-delete-match-no"
+                type="button"
+                onClick={() => setMatchToDelete(null)}
+                className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-750 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <span>Không (No)</span>
+              </button>
+              <button
+                id="btn-confirm-delete-match-yes"
+                type="button"
+                onClick={() => {
+                  handleDeleteMatch(matchToDelete.id);
+                  setMatchToDelete(null);
+                }}
+                className="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white text-xs font-bold shadow-lg shadow-rose-600/30 hover:shadow-rose-600/50 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Có, Xóa (Yes)</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

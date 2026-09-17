@@ -19,15 +19,16 @@ interface MonsterAvatarProps {
   emptyLabel?: string;
   selectable?: boolean;
   showQuickControls?: boolean;
+  showTooltip?: boolean;
 }
 
 const SIZE_MAP = {
-  xs: 'w-9 h-9 text-[10px]',
-  sm: 'w-12 h-12 text-xs',
-  md: 'w-15 h-15 sm:w-16 sm:h-16 text-sm',
-  lg: 'w-16 h-16 sm:w-18 sm:h-18 text-base',
-  xl: 'w-20 h-20 sm:w-22 sm:h-22 text-lg',
-  '2xl': 'w-26 h-26 text-xl',
+  xs: 'w-8 h-8 sm:w-9 sm:h-9 text-[10px]',
+  sm: 'w-10 h-10 min-[380px]:w-11 min-[380px]:h-11 sm:w-12 sm:h-12 text-xs',
+  md: 'w-12 h-12 min-[380px]:w-14 min-[380px]:h-14 sm:w-16 sm:h-16 text-sm',
+  lg: 'w-12 h-12 min-[380px]:w-14 min-[380px]:h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 text-xs sm:text-base',
+  xl: 'w-18 h-18 sm:w-20 sm:h-20 text-lg',
+  '2xl': 'w-24 h-24 text-xl',
 };
 
 export const MonsterAvatar: React.FC<MonsterAvatarProps> = ({
@@ -46,6 +47,7 @@ export const MonsterAvatar: React.FC<MonsterAvatarProps> = ({
   emptyLabel = '+',
   selectable = false,
   showQuickControls = false,
+  showTooltip = false,
 }) => {
   const [imageError, setImageError] = useState(false);
 
@@ -54,7 +56,7 @@ export const MonsterAvatar: React.FC<MonsterAvatarProps> = ({
     return (
       <div className={`relative flex flex-col items-center select-none group ${className}`}>
         {isFirstPick && (
-          <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-30 bg-blue-500 text-white font-black text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-md shadow-md uppercase tracking-wider">
+          <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-30 bg-blue-500 text-white font-black text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5 rounded shadow-md uppercase tracking-wider leading-none pointer-events-none">
             1ST
           </div>
         )}
@@ -64,7 +66,7 @@ export const MonsterAvatar: React.FC<MonsterAvatarProps> = ({
           className={`${SIZE_MAP[size]} rounded-2xl border-2 border-dashed border-slate-700 hover:border-teal-400/90 bg-slate-900/80 hover:bg-slate-800/90 transition-all duration-150 flex flex-col items-center justify-center text-slate-500 hover:text-teal-300 cursor-pointer shadow-inner relative overflow-hidden`}
           title="Chọn Pet"
         >
-          <span className="text-xl font-light group-hover:scale-125 transition-transform leading-none">+</span>
+          <span className="text-xl font-light group-hover:scale-110 transition-transform leading-none">+</span>
           {size !== 'xs' && size !== 'sm' && emptyLabel !== '+' && (
             <span className="text-[10px] font-semibold text-slate-500 group-hover:text-teal-300 mt-0.5 truncate px-1">
               {emptyLabel}
@@ -73,7 +75,7 @@ export const MonsterAvatar: React.FC<MonsterAvatarProps> = ({
 
           {/* Pick Order Badge */}
           {pickOrder !== undefined && (
-            <div className="absolute bottom-1 right-1 bg-black/90 text-white font-extrabold text-[10px] sm:text-[11px] px-1.5 py-0.5 rounded-sm shadow-md border border-black/50 leading-none">
+            <div className="absolute bottom-0.5 right-0.5 z-20 bg-black/90 text-white font-extrabold text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 sm:py-0.5 rounded shadow-md border border-black/50 leading-none pointer-events-none">
               {pickOrder}
             </div>
           )}
@@ -87,26 +89,28 @@ export const MonsterAvatar: React.FC<MonsterAvatarProps> = ({
 
   return (
     <div className={`relative flex flex-col items-center select-none group ${className}`}>
-      {/* Floating Name Tooltip on hover (User requirement: "khi di chuột lại sẽ hiển thị tip tên của quái thú") */}
-      <div className="absolute -top-9 left-1/2 -translate-x-1/2 px-2.5 py-1 bg-slate-900/95 border border-slate-700/90 text-white rounded-lg shadow-2xl pointer-events-none z-50 opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100 transition-all duration-150 whitespace-nowrap flex items-center gap-1.5 backdrop-blur-md">
-        <img
-          src={elementInfo.iconUrl}
-          alt={monster.element}
-          className="w-3.5 h-3.5 object-contain inline-block shrink-0"
-        />
-        <span className="text-xs font-bold tracking-wide">{monster.name}</span>
-        {monster.awakenedName && (
-          <span className="text-[10px] text-slate-400 font-normal">
-            ({monster.awakenedName.split(' ')[0]})
-          </span>
-        )}
-        {/* Caret arrow */}
-        <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-slate-900/95" />
-      </div>
+      {/* Floating Name Tooltip on hover (only on desktop when showTooltip is true to avoid touch overlap bugs) */}
+      {showTooltip && (
+        <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-slate-900/95 border border-slate-700/90 text-white rounded-lg shadow-2xl pointer-events-none z-50 opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100 transition-all duration-150 whitespace-nowrap hidden md:flex items-center gap-1.5 backdrop-blur-md">
+          <img
+            src={elementInfo.iconUrl}
+            alt={monster.element}
+            className="w-3 h-3 object-contain inline-block shrink-0"
+          />
+          <span className="text-xs font-bold tracking-wide">{monster.name}</span>
+          {monster.awakenedName && (
+            <span className="text-[9px] text-slate-400 font-normal">
+              ({monster.awakenedName.split(' ')[0]})
+            </span>
+          )}
+          {/* Caret arrow */}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-slate-900/95" />
+        </div>
+      )}
 
       {/* 1ST Blue Pill Badge at the top */}
       {isFirstPick && (
-        <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-30 bg-blue-500 text-white font-black text-[9px] sm:text-[10px] px-2 py-0.5 rounded-md shadow-md uppercase tracking-wider leading-none">
+        <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-30 bg-blue-500 text-white font-black text-[8.5px] sm:text-[9.5px] px-1.5 sm:px-2 py-0.5 rounded shadow-md uppercase tracking-wider leading-none pointer-events-none">
           1ST
         </div>
       )}
@@ -118,10 +122,10 @@ export const MonsterAvatar: React.FC<MonsterAvatarProps> = ({
         className={`relative ${SIZE_MAP[size]} rounded-2xl overflow-hidden transition-all duration-150 cursor-pointer shadow-md select-none bg-slate-950
           ${
             isLeader
-              ? 'border-[3px] border-amber-400 ring-2 ring-amber-400/30 shadow-[0_0_12px_rgba(251,191,36,0.35)]'
+              ? 'border-[2.5px] border-amber-400 ring-2 ring-amber-400/30 shadow-[0_0_12px_rgba(251,191,36,0.35)]'
               : 'border-2 border-slate-700/90 hover:border-slate-400'
           }
-          ${isBanned ? 'brightness-90' : 'hover:scale-[1.03]'}
+          ${isBanned ? 'brightness-90' : 'hover:brightness-105'}
           ${selectable ? 'hover:ring-2 hover:ring-teal-400' : ''}
         `}
       >
@@ -160,7 +164,7 @@ export const MonsterAvatar: React.FC<MonsterAvatarProps> = ({
 
         {/* Pick Order Badge: Black background with white number at bottom-right */}
         {pickOrder !== undefined && (
-          <div className="absolute bottom-1 right-1 z-20 bg-black/90 text-white font-extrabold text-[10px] sm:text-[11px] px-1.5 py-0.5 rounded-sm shadow-md border border-black/40 leading-none">
+          <div className="absolute bottom-0.5 right-0.5 z-20 bg-black/90 text-white font-extrabold text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 sm:py-0.5 rounded shadow-md border border-black/50 leading-none pointer-events-none">
             {pickOrder}
           </div>
         )}

@@ -49,3 +49,13 @@ export interface SiegeCounterStrategy {
   turnOrder?: string;
   difficulty?: 'Dễ' | 'Trung bình' | 'Yêu cầu rune cao';
 }
+
+export interface SavedSiegeDefense {
+  id: string;
+  name: string;
+  monsterIds: [string, string, string];
+  leaderMonsterId?: string;
+  notes?: string;
+  createdAt: number;
+}
+

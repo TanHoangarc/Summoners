@@ -204,6 +204,19 @@ const SWARFARM_FAMILY_MAP: Record<
   },
 };
 
+const formatUnawakenedFamily = (unawakened: string | undefined, element: string, name?: string) => {
+  if (unawakened && unawakened.trim()) {
+    return `${unawakened.trim()} (${element.charAt(0).toUpperCase() + element.slice(1)})`;
+  }
+  if (name && name.includes('/')) {
+    const rawFamily = name.split('/')[0].replace(/^(Water|Fire|Wind|Light|Dark)\s+/i, '').trim();
+    if (rawFamily) {
+      return `${rawFamily} (${element.charAt(0).toUpperCase() + element.slice(1)})`;
+    }
+  }
+  return '';
+};
+
 /**
  * Intelligent parser that extracts monster details from avatar URL or existing monster dataset
  */
@@ -244,7 +257,7 @@ export function autoDetectMonsterFromUrl(
       if (key.toLowerCase() === matchedFilename) {
         return {
           name: entry.name,
-          awakenedName: `${entry.unawakened} (${entry.element.charAt(0).toUpperCase() + entry.element.slice(1)})`,
+          awakenedName: formatUnawakenedFamily(entry.unawakened, entry.element, entry.name),
           element: entry.element as ElementType,
           naturalStars: entry.naturalStars,
           role: (entry.role as MonsterRole) || 'attack',
@@ -264,7 +277,7 @@ export function autoDetectMonsterFromUrl(
       if (entry.com2usId === targetId) {
         return {
           name: entry.name,
-          awakenedName: `${entry.unawakened} (${entry.element.charAt(0).toUpperCase() + entry.element.slice(1)})`,
+          awakenedName: formatUnawakenedFamily(entry.unawakened, entry.element, entry.name),
           element: entry.element as ElementType,
           naturalStars: entry.naturalStars,
           role: (entry.role as MonsterRole) || 'attack',
@@ -290,7 +303,7 @@ export function autoDetectMonsterFromUrl(
     ) {
       return {
         name: entry.name,
-        awakenedName: `${entry.unawakened} (${entry.element.charAt(0).toUpperCase() + entry.element.slice(1)})`,
+        awakenedName: formatUnawakenedFamily(entry.unawakened, entry.element, entry.name),
         element: entry.element as ElementType,
         naturalStars: entry.naturalStars,
         role: (entry.role as MonsterRole) || 'attack',
@@ -390,4 +403,263 @@ export function searchMonsterCatalog(query: string): SwgtMonsterEntry[] {
   }
 
   return results;
+}
+
+export interface FamilySibling {
+  element: ElementType;
+  displayName: string;
+  catalogEntry?: SwgtMonsterEntry;
+  existingMonsters: Monster[];
+  isCurrent: boolean;
+  avatarUrl?: string;
+  stars?: number;
+  role?: string;
+}
+
+export interface MonsterFamilyGroup {
+  familyName: string;
+  siblings: Record<ElementType, FamilySibling>;
+  totalInStorage: number;
+}
+
+const ALL_ELEMENTS: ElementType[] = ['water', 'fire', 'wind', 'light', 'dark'];
+
+// Helper to lookup monster in SWGT catalog by name or avatar icon
+function lookupCatalogMonster(m: { name: string; avatarUrl?: string }): SwgtMonsterEntry | null {
+  const mClean = (m.name || '').trim();
+  const mBase = mClean.replace(/\s+#\d+$/, '').trim();
+  const mAvatar = (m.avatarUrl || '').trim();
+  const iconFile = mAvatar.match(/(unit_icon_[a-zA-Z0-9_]+\.png)/i)?.[1]?.toLowerCase();
+
+  if (iconFile && swgtMonstersMap[iconFile]) {
+    return swgtMonstersMap[iconFile];
+  }
+
+  for (const entry of Object.values(swgtMonstersMap)) {
+    if (
+      entry.name.toLowerCase() === mClean.toLowerCase() ||
+      entry.name.toLowerCase() === mBase.toLowerCase()
+    ) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolves the 5 elemental siblings (Water, Fire, Wind, Light, Dark) for a given monster
+ * matching against SWGT 940-monster catalog and user's owned monsters.
+ */
+export function getFamilySiblingsForMonster(
+  current: {
+    id?: string;
+    name: string;
+    awakenedName?: string;
+    element: ElementType;
+    avatarUrl?: string;
+  },
+  allMonsters: Monster[] = []
+): MonsterFamilyGroup {
+  const cleanName = (current.name || '').trim();
+  const cleanAwakened = (current.awakenedName || '').trim();
+  const cleanAvatar = (current.avatarUrl || '').trim();
+  const baseName = cleanName.replace(/\s+#\d+$/, '').trim();
+
+  // 1. Try to find the matching entry in SWGT catalog
+  let matchedCatalogEntry: SwgtMonsterEntry | null = null;
+  const avatarFilename = cleanAvatar.match(/(unit_icon_[a-zA-Z0-9_]+\.png)/i)?.[1]?.toLowerCase();
+
+  for (const [key, entry] of Object.entries(swgtMonstersMap)) {
+    if (avatarFilename && key.toLowerCase() === avatarFilename) {
+      matchedCatalogEntry = entry;
+      break;
+    }
+    if (
+      entry.name.toLowerCase() === cleanName.toLowerCase() ||
+      entry.name.toLowerCase() === baseName.toLowerCase()
+    ) {
+      matchedCatalogEntry = entry;
+      break;
+    }
+  }
+
+  // 2. Extract family name
+  let familyName = '';
+  let isCollab = false;
+
+  if (matchedCatalogEntry) {
+    if (matchedCatalogEntry.unawakened && matchedCatalogEntry.unawakened.trim()) {
+      familyName = matchedCatalogEntry.unawakened.trim();
+    } else {
+      // Collab format e.g. "Water Werner / Satoru Gojo" or "Water Fern"
+      familyName = matchedCatalogEntry.name.replace(/^(Water|Fire|Wind|Light|Dark)\s+/i, '').trim();
+      isCollab = true;
+    }
+  } else {
+    // If not matched directly, check awakenedName
+    if (cleanAwakened) {
+      // e.g. "Sky Surfer (Wind)" or "Dragon (Water)" -> extract "Sky Surfer" or "Dragon"
+      const match = cleanAwakened.match(/^([^(]+)(?:\s*\([^)]*\))?/);
+      if (match && match[1].trim()) {
+        const potentialFamily = match[1].trim();
+        // Verify against catalog
+        for (const entry of Object.values(swgtMonstersMap)) {
+          if (entry.unawakened && entry.unawakened.toLowerCase() === potentialFamily.toLowerCase()) {
+            familyName = entry.unawakened;
+            break;
+          }
+        }
+        if (!familyName) familyName = potentialFamily;
+      }
+    }
+    // Check if name has collab format e.g. "Light Werner / Satoru Gojo"
+    if (!familyName && baseName.includes('/')) {
+      familyName = baseName.replace(/^(Water|Fire|Wind|Light|Dark)\s+/i, '').trim();
+      isCollab = true;
+    }
+  }
+
+  // 3. Find catalog entries for each element
+  const catalogByElement: Partial<Record<ElementType, SwgtMonsterEntry>> = {};
+  if (familyName) {
+    for (const entry of Object.values(swgtMonstersMap)) {
+      const elem = entry.element.toLowerCase() as ElementType;
+      if (!ALL_ELEMENTS.includes(elem)) continue;
+
+      if (entry.unawakened && entry.unawakened.toLowerCase() === familyName.toLowerCase()) {
+        catalogByElement[elem] = entry;
+      } else if (isCollab) {
+        const strippedEntryName = entry.name.replace(/^(Water|Fire|Wind|Light|Dark)\s+/i, '').trim();
+        if (strippedEntryName.toLowerCase() === familyName.toLowerCase()) {
+          catalogByElement[elem] = entry;
+        }
+      }
+    }
+  }
+
+  // 4. Build siblings for all 5 elements
+  const siblings: Record<ElementType, FamilySibling> = {} as any;
+  let totalInStorage = 0;
+
+  for (const elem of ALL_ELEMENTS) {
+    const catalogEntry = catalogByElement[elem];
+
+    // Find all monsters in storage that match this family & element
+    const existing = allMonsters.filter((m) => {
+      if (m.element !== elem) return false;
+
+      // Direct ID match with current editing monster
+      if (current.id && m.id === current.id && current.element === elem) {
+        return true;
+      }
+
+      const mCleanName = m.name.trim();
+      const mBaseName = mCleanName.replace(/\s+#\d+$/, '').trim();
+
+      // If catalog entry exists, compare against catalog name (e.g. "Jamire" or "Jamire #2")
+      if (catalogEntry) {
+        if (
+          mCleanName.toLowerCase() === catalogEntry.name.toLowerCase() ||
+          mBaseName.toLowerCase() === catalogEntry.name.toLowerCase()
+        ) {
+          return true;
+        }
+
+        // Check avatar URL filename against catalogEntry icon
+        if (catalogEntry.iconUrl && m.avatarUrl) {
+          const mIconFile = m.avatarUrl.match(/(unit_icon_[a-zA-Z0-9_]+\.png)/i)?.[1]?.toLowerCase();
+          const catIconFile = catalogEntry.iconUrl.match(/(unit_icon_[a-zA-Z0-9_]+\.png)/i)?.[1]?.toLowerCase();
+          if (mIconFile && catIconFile && mIconFile === catIconFile) {
+            return true;
+          }
+        }
+      }
+
+      // Check m's own catalog entry to determine its true family
+      const mCatalog = lookupCatalogMonster(m);
+      if (mCatalog) {
+        // If m has a catalog entry, its unawakened family MUST match familyName exactly (e.g. "Dragon" === "Dragon", NOT "Dragon Knight")
+        if (familyName && mCatalog.unawakened) {
+          if (mCatalog.unawakened.toLowerCase() === familyName.toLowerCase()) {
+            return true;
+          }
+        }
+        if (isCollab && familyName) {
+          const mStripped = mCatalog.name.replace(/^(Water|Fire|Wind|Light|Dark)\s+/i, '').trim();
+          if (mStripped.toLowerCase() === familyName.toLowerCase()) {
+            return true;
+          }
+        }
+        // Belong to a different known family (e.g. Leo is Dragon Knight, not Dragon) -> reject
+        return false;
+      }
+
+      // Fallback for custom monsters not in catalog:
+      // Check family name in awakenedName - MUST be exact family match, NOT substring!
+      if (familyName && m.awakenedName) {
+        const match = m.awakenedName.trim().match(/^([^(]+)(?:\s*\([^)]*\))?/);
+        if (match && match[1].trim()) {
+          const mFamily = match[1].trim();
+          if (mFamily.toLowerCase() === familyName.toLowerCase()) {
+            return true;
+          }
+        }
+      }
+
+      // If collab, check stripped name
+      if (isCollab && familyName) {
+        const mStripped = mCleanName.replace(/^(Water|Fire|Wind|Light|Dark)\s+/i, '').trim();
+        if (mStripped.toLowerCase() === familyName.toLowerCase()) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+
+    const isCurrent = current.element === elem && (
+      current.id
+        ? existing.some((m) => m.id === current.id)
+        : cleanName !== ''
+    );
+
+    if (existing.length > 0) {
+      totalInStorage++;
+    }
+
+    const defaultDisplayName = catalogEntry
+      ? catalogEntry.name
+      : (isCollab && familyName
+          ? `${elem.charAt(0).toUpperCase() + elem.slice(1)} ${familyName}`
+          : `${familyName || 'Quái thú'} (${elem.toUpperCase()})`);
+
+    const displayName = isCurrent && cleanName
+      ? cleanName
+      : existing.length > 0
+        ? existing[0].name
+        : defaultDisplayName;
+
+    const avatarUrl = isCurrent && cleanAvatar
+      ? cleanAvatar
+      : existing.length > 0 && existing[0].avatarUrl
+        ? existing[0].avatarUrl
+        : catalogEntry?.iconUrl;
+
+    siblings[elem] = {
+      element: elem,
+      displayName,
+      catalogEntry,
+      existingMonsters: existing,
+      isCurrent,
+      avatarUrl,
+      stars: existing[0]?.naturalStars || catalogEntry?.naturalStars || 5,
+      role: existing[0]?.role || catalogEntry?.role,
+    };
+  }
+
+  return {
+    familyName: familyName || 'Dòng tộc quái thú',
+    siblings,
+    totalInStorage,
+  };
 }

@@ -16,7 +16,14 @@ import {
 import { ElementType, Monster, MonsterRole } from '../../types';
 import { ELEMENT_COLORS, ROLE_LABELS } from '../../utils/monsterHelpers';
 import { MonsterAvatar } from '../common/MonsterAvatar';
-import { autoDetectMonsterFromUrl, AutoDetectedMonsterInfo, searchMonsterCatalog, SwgtMonsterEntry } from '../../utils/monsterAutoDetector';
+import {
+  autoDetectMonsterFromUrl,
+  AutoDetectedMonsterInfo,
+  searchMonsterCatalog,
+  SwgtMonsterEntry,
+  getFamilySiblingsForMonster,
+} from '../../utils/monsterAutoDetector';
+import { MonsterFamilySwitcher } from './MonsterFamilySwitcher';
 
 interface MonsterFormModalProps {
   isOpen: boolean;
@@ -127,7 +134,10 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
 
   const handleSelectCatalogEntry = (entry: SwgtMonsterEntry) => {
     setName(entry.name);
-    setAwakenedName(`${entry.unawakened} (${entry.element.charAt(0).toUpperCase() + entry.element.slice(1)})`);
+    const formattedAwakened = entry.unawakened?.trim()
+      ? `${entry.unawakened.trim()} (${entry.element.charAt(0).toUpperCase() + entry.element.slice(1)})`
+      : (entry.name.includes('/') ? `${entry.name.split('/')[0].replace(/^(Water|Fire|Wind|Light|Dark)\s+/i, '').trim()} (${entry.element.charAt(0).toUpperCase() + entry.element.slice(1)})` : '');
+    setAwakenedName(formattedAwakened);
     setElement(entry.element as ElementType);
     setNaturalStars(entry.naturalStars);
     setRole((entry.role as MonsterRole) || 'attack');
@@ -145,7 +155,7 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
   const duplicateInfo = useMemo(() => {
     const currentId = currentEditingMonster?.id;
     const cleanName = name.trim().toLowerCase();
-    const cleanAwakened = awakenedName.trim().toLowerCase();
+    const baseName = cleanName.replace(/\s+#\d+$/, '').trim();
     const cleanAvatar = avatarUrl.trim().toLowerCase();
 
     if (!cleanName && !cleanAvatar) return null;
@@ -158,13 +168,13 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
       if (currentId && m.id === currentId) continue;
 
       const mCleanName = m.name.trim().toLowerCase();
-      const mCleanAwakened = (m.awakenedName || '').trim().toLowerCase();
+      const mBaseName = mCleanName.replace(/\s+#\d+$/, '').trim();
       const mCleanAvatar = (m.avatarUrl || '').trim().toLowerCase();
       const mIconMatch = mCleanAvatar.match(/unit_icon_[a-zA-Z0-9_]+\.png/i);
       const mIconFilename = mIconMatch ? mIconMatch[0].toLowerCase() : null;
 
-      // 1. Same exact name AND same element
-      if (cleanName && mCleanName === cleanName && m.element === element) {
+      // 1. Same exact or base name AND same element -> TRUE DUPLICATE
+      if (baseName && mBaseName === baseName && m.element === element) {
         return {
           matchedMonster: m,
           isDirectDuplicate: true,
@@ -173,20 +183,10 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
         };
       }
 
-      // 2. Same awakened name AND same element
-      if (cleanAwakened && mCleanAwakened && cleanAwakened === mCleanAwakened && m.element === element) {
-        return {
-          matchedMonster: m,
-          isDirectDuplicate: true,
-          type: 'awakened_and_element' as const,
-          message: `Quái thú dòng "${m.awakenedName}" (${ELEMENT_COLORS[m.element].label}) đã tồn tại (Tên: ${m.name})!`,
-        };
-      }
-
-      // 3. Same Avatar icon filename or same exact Avatar URL
+      // 2. Same Avatar icon filename or exact same Avatar URL (only valid non-empty links)
       if (
-        (cleanAvatar && mCleanAvatar && cleanAvatar === mCleanAvatar) ||
-        (iconFilename && mIconFilename && iconFilename === mIconFilename)
+        (iconFilename && mIconFilename && iconFilename === mIconFilename && m.element === element) ||
+        (cleanAvatar && mCleanAvatar && cleanAvatar === mCleanAvatar && cleanAvatar.startsWith('http'))
       ) {
         return {
           matchedMonster: m,
@@ -196,8 +196,8 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
         };
       }
 
-      // 4. Same name but different element
-      if (cleanName && mCleanName === cleanName && m.element !== element) {
+      // 3. Same base name but different element -> Helpful notice (NOT duplicate)
+      if (baseName && mBaseName === baseName && m.element !== element) {
         return {
           matchedMonster: m,
           isDirectDuplicate: false,
@@ -208,7 +208,7 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
     }
 
     return null;
-  }, [name, awakenedName, element, avatarUrl, allMonsters, currentEditingMonster]);
+  }, [name, element, avatarUrl, allMonsters, currentEditingMonster]);
 
   const handleSwitchToEditExisting = (existing: Monster) => {
     setCurrentEditingMonster(existing);
@@ -224,6 +224,64 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
     setShowDuplicateBlockedPrompt(false);
     setAutoFilledInfo(`✓ Đang chuyển sang chỉnh sửa quái thú có sẵn: ${existing.name}`);
   };
+
+  const handleSwitchToCatalogSibling = (entry: SwgtMonsterEntry) => {
+    // If sibling already exists in user's collection, switch directly to editing it
+    const existing = allMonsters.find(
+      (m) =>
+        m.element === entry.element &&
+        (m.name.trim().toLowerCase() === entry.name.toLowerCase() ||
+          m.name.trim().toLowerCase().startsWith(entry.name.toLowerCase()))
+    );
+    if (existing) {
+      handleSwitchToEditExisting(existing);
+      return;
+    }
+
+    // Otherwise, populate template to create/add this sibling
+    setCurrentEditingMonster(null);
+    setName(entry.name);
+    const formattedAwakened = entry.unawakened?.trim()
+      ? `${entry.unawakened.trim()} (${entry.element.charAt(0).toUpperCase() + entry.element.slice(1)})`
+      : (entry.name.includes('/')
+          ? `${entry.name.split('/')[0].replace(/^(Water|Fire|Wind|Light|Dark)\s+/i, '').trim()} (${entry.element.charAt(0).toUpperCase() + entry.element.slice(1)})`
+          : '');
+    setAwakenedName(formattedAwakened);
+    setElement(entry.element as ElementType);
+    setNaturalStars(entry.naturalStars);
+    setRole((entry.role as MonsterRole) || 'attack');
+    setLeaderSkill(entry.leaderSkill || '');
+    if (entry.iconUrl) {
+      setAvatarUrl(entry.iconUrl);
+      testAvatarUrl(entry.iconUrl);
+    }
+    setAllowDuplicate(false);
+    setShowDuplicateBlockedPrompt(false);
+    setAutoFilledInfo(
+      `✓ Đã tải mẫu quái thú [${entry.name}] (${entry.element.toUpperCase()}) - Bấm "Lưu Quái Thú" để thêm vào kho!`
+    );
+  };
+
+  const handleChangeElementOnly = (newElem: ElementType) => {
+    setElement(newElem);
+    setAutoFilledInfo(`✓ Đã đổi hệ sang ${ELEMENT_COLORS[newElem].label.toUpperCase()}`);
+  };
+
+  // Resolve 5 elemental siblings for quick element switching
+  const familyGroup = useMemo(() => {
+    if (!currentEditingMonster && !name.trim() && !avatarUrl.trim()) return null;
+
+    return getFamilySiblingsForMonster(
+      {
+        id: currentEditingMonster?.id,
+        name: name || currentEditingMonster?.name || '',
+        awakenedName: awakenedName || currentEditingMonster?.awakenedName,
+        element,
+        avatarUrl: avatarUrl || currentEditingMonster?.avatarUrl,
+      },
+      allMonsters
+    );
+  }, [currentEditingMonster, name, awakenedName, element, avatarUrl, allMonsters]);
 
   const handleAutoRenameDupe = () => {
     if (!duplicateInfo) return;
@@ -304,21 +362,21 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-slate-100 max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+      <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-slate-100 max-h-[95dvh] sm:max-h-[92vh] my-auto">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/90">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30 flex items-center justify-center">
-              <Sparkles className="w-4 h-4" />
+        <div className="flex items-center justify-between px-3.5 sm:px-5 py-3 sm:py-3.5 border-b border-slate-800 bg-slate-900/90 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30 flex items-center justify-center shrink-0">
+              <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">
+              <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
                 {currentEditingMonster ? 'Chỉnh sửa Pet' : 'Thêm Pet Mới'}
               </h3>
               {!currentEditingMonster && (
-                <p className="text-[11px] text-teal-400/90 font-medium">
+                <p className="text-[10px] sm:text-[11px] text-teal-400/90 font-medium">
                   Tự động điền Tên, Hệ, Sao, Leader & Vai trò khi dán link ảnh
                 </p>
               )}
@@ -334,8 +392,20 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4 custom-scrollbar">
+        <form onSubmit={handleSubmit} className="p-3 sm:p-5 overflow-y-auto space-y-3 sm:space-y-4 custom-scrollbar flex-1">
           
+          {/* Quick Element Switcher Bar (Chuyển nhanh qua hệ khác để sửa) */}
+          {familyGroup && (
+            <MonsterFamilySwitcher
+              familyGroup={familyGroup}
+              currentMonsterId={currentEditingMonster?.id}
+              currentElement={element}
+              onSwitchToExisting={handleSwitchToEditExisting}
+              onSwitchToCatalogSibling={handleSwitchToCatalogSibling}
+              onChangeElementOnly={handleChangeElementOnly}
+            />
+          )}
+
           {/* Avatar URL & Live Preview Section */}
           <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
             <div className="flex items-center justify-between">
@@ -638,13 +708,13 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
           )}
 
           {/* Element, Stars & Role (Compact Small Layout) */}
-          <div className="space-y-2.5 p-3 bg-slate-950/40 border border-slate-800/80 rounded-xl">
+          <div className="space-y-2.5 p-2.5 sm:p-3 bg-slate-950/40 border border-slate-800/80 rounded-xl">
             {/* Nguyên tố (Hệ) - hiển thị nhỏ */}
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                 Nguyên tố (Hệ)
               </label>
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="grid grid-cols-5 gap-1 sm:flex sm:flex-wrap sm:gap-1.5">
                 {(['water', 'fire', 'wind', 'light', 'dark'] as ElementType[]).map((elem) => {
                   const info = ELEMENT_COLORS[elem];
                   const active = element === elem;
@@ -653,14 +723,14 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
                       key={elem}
                       type="button"
                       onClick={() => setElement(elem)}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs transition-all cursor-pointer ${
+                      className={`inline-flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-2.5 py-1.5 rounded-lg border text-xs transition-all cursor-pointer ${
                         active
                           ? `${info.badge} ring-1 ring-white/30 font-bold scale-102`
                           : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
                       }`}
                     >
-                      <img src={info.iconUrl} alt={elem} className="w-4 h-4 object-contain" />
-                      <span className="capitalize text-xs font-medium">
+                      <img src={info.iconUrl} alt={elem} className="w-3.5 h-3.5 sm:w-4 sm:h-4 object-contain shrink-0" />
+                      <span className="capitalize text-[10.5px] sm:text-xs font-medium truncate">
                         {info.label}
                       </span>
                     </button>
@@ -674,13 +744,13 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                 Số sao gốc (Natural Stars)
               </label>
-              <div className="flex items-center gap-1">
+              <div className="grid grid-cols-5 gap-1 sm:flex sm:items-center sm:gap-1">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button
                     key={star}
                     type="button"
                     onClick={() => setNaturalStars(star)}
-                    className={`py-0.5 px-2 rounded-lg border text-center text-[11px] transition-all cursor-pointer ${
+                    className={`py-1 sm:py-0.5 px-2 rounded-lg border text-center text-xs sm:text-[11px] transition-all cursor-pointer ${
                       naturalStars === star
                         ? 'bg-amber-500/20 text-amber-300 border-amber-400 font-bold scale-102'
                         : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
@@ -697,13 +767,13 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                 Vai trò (Role)
               </label>
-              <div className="flex flex-wrap items-center gap-1">
+              <div className="grid grid-cols-4 gap-1 sm:flex sm:flex-wrap sm:gap-1">
                 {(['attack', 'defense', 'hp', 'support'] as MonsterRole[]).map((r) => (
                   <button
                     key={r}
                     type="button"
                     onClick={() => setRole(r)}
-                    className={`py-0.5 px-2 rounded-lg border text-center text-[11px] transition-all cursor-pointer ${
+                    className={`py-1 sm:py-0.5 px-1.5 sm:px-2 rounded-lg border text-center text-[10px] min-[360px]:text-[10.5px] sm:text-[11px] transition-all cursor-pointer truncate ${
                       role === r
                         ? `${ROLE_LABELS[r].color} font-bold scale-102`
                         : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
@@ -731,17 +801,17 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
           </div>
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
+          <div className="flex items-center justify-end gap-2 sm:gap-2.5 pt-3 border-t border-slate-800 shrink-0">
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl text-xs transition-colors cursor-pointer"
+              className="px-3.5 sm:px-4 py-2 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl text-xs transition-colors cursor-pointer min-h-[36px]"
             >
               Hủy
             </button>
             <button
               type="submit"
-              className={`px-4 py-1.5 font-bold rounded-xl text-xs shadow-md transition-all cursor-pointer ${
+              className={`px-4 sm:px-5 py-2 sm:py-1.5 font-bold rounded-xl text-xs shadow-md transition-all cursor-pointer min-h-[36px] ${
                 duplicateInfo?.isDirectDuplicate && !allowDuplicate
                   ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 ring-2 ring-amber-400/40'
                   : 'bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950'

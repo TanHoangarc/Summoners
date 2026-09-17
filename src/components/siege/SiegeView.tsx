@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Shield,
   Swords,
@@ -12,12 +12,24 @@ import {
   CheckCircle,
   ThumbsUp,
   Award,
+  BookmarkCheck,
+  Check,
 } from 'lucide-react';
-import { Monster, SiegeCounterStrategy } from '../../types';
+import { Monster, SiegeCounterStrategy, SavedSiegeDefense } from '../../types';
 import { DEFAULT_SIEGE_COUNTERS } from '../../data/defaultCounters';
 import { getMonsterById, generateDynamicCounters } from '../../utils/monsterHelpers';
 import { MonsterAvatar } from '../common/MonsterAvatar';
 import { MonsterPickerModal } from '../common/MonsterPickerModal';
+import { SaveDefenseModal } from './SaveDefenseModal';
+import { SavedDefensesList } from './SavedDefensesList';
+import {
+  subscribeToSiegeDefenses,
+  saveSiegeDefenseToFirestore,
+  deleteSiegeDefenseFromFirestore,
+  DEFAULT_SAVED_DEFENSES,
+  STORAGE_KEY_SIEGE_DEFENSES,
+  seedDefaultDefensesToFirestore,
+} from '../../lib/siegeDefenseService';
 
 interface SiegeViewProps {
   allMonsters: Monster[];
@@ -34,6 +46,59 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
     'ophilia',
     'theomars',
   ]);
+
+  // Saved defense teams state with localStorage fallback
+  const [savedDefenses, setSavedDefenses] = useState<SavedSiegeDefense[]>(() => {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY_SIEGE_DEFENSES);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_SAVED_DEFENSES;
+  });
+
+  // Modal for saving or editing defense
+  const [isSaveDefenseModalOpen, setIsSaveDefenseModalOpen] = useState(false);
+  const [editingDefense, setEditingDefense] = useState<SavedSiegeDefense | null>(null);
+
+  // Toast feedback message
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Realtime subscription to Firestore siege_defenses
+  useEffect(() => {
+    const unsubscribe = subscribeToSiegeDefenses(
+      (firestoreList) => {
+        if (firestoreList.length > 0) {
+          setSavedDefenses(firestoreList);
+          try {
+            localStorage.setItem(STORAGE_KEY_SIEGE_DEFENSES, JSON.stringify(firestoreList));
+          } catch {}
+        }
+      },
+      (err) => {
+        console.warn('Siege defenses sync notice:', err);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // Save to localStorage whenever savedDefenses changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_SIEGE_DEFENSES, JSON.stringify(savedDefenses));
+    } catch {}
+  }, [savedDefenses]);
+
+  // Toast auto-clear
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(null), 3200);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
 
   // Saved / user contributed counters
   const [countersDatabase, setCountersDatabase] = useState<SiegeCounterStrategy[]>(DEFAULT_SIEGE_COUNTERS);
@@ -63,6 +128,66 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
 
   // Determine Leader Skill from slot 1 or any monster with Guild Leader
   const leaderMonster = defMonsters.find((m) => m?.leaderSkill && m.leaderSkill.includes('Guild')) || defMonsters[0];
+
+  const canSaveCurrent = Boolean(defenseIds[0] && defenseIds[1] && defenseIds[2]);
+
+  const handleOpenSaveModal = () => {
+    if (!canSaveCurrent) return;
+    setEditingDefense(null);
+    setIsSaveDefenseModalOpen(true);
+  };
+
+  const handleEditDefense = (def: SavedSiegeDefense) => {
+    setEditingDefense(def);
+    setIsSaveDefenseModalOpen(true);
+  };
+
+  const handleSaveDefense = async (defense: SavedSiegeDefense) => {
+    // Optimistic UI update
+    setSavedDefenses((prev) => {
+      const index = prev.findIndex((d) => d.id === defense.id);
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = defense;
+        return next;
+      }
+      return [defense, ...prev];
+    });
+
+    setToastMessage(`Đã lưu đội hình "${defense.name}" thành công!`);
+
+    // Persist to Firestore
+    try {
+      await saveSiegeDefenseToFirestore(defense);
+    } catch (err) {
+      console.warn('Error saving defense to Firestore:', err);
+    }
+  };
+
+  const handleLoadDefense = (defense: SavedSiegeDefense) => {
+    setDefenseIds([defense.monsterIds[0], defense.monsterIds[1], defense.monsterIds[2]]);
+    setToastMessage(`Đã nạp đội hình "${defense.name}" vào ô Defense!`);
+  };
+
+  const handleDeleteDefense = async (id: string) => {
+    setSavedDefenses((prev) => prev.filter((d) => d.id !== id));
+    setToastMessage('Đã xóa đội hình khỏi danh sách!');
+    try {
+      await deleteSiegeDefenseFromFirestore(id);
+    } catch (err) {
+      console.warn('Error deleting defense from Firestore:', err);
+    }
+  };
+
+  const handleRestoreDefaults = async () => {
+    setSavedDefenses(DEFAULT_SAVED_DEFENSES);
+    setToastMessage('Đã khôi phục các đội hình mẫu mặc định!');
+    try {
+      await seedDefaultDefensesToFirestore();
+    } catch (err) {
+      console.warn('Error seeding default defenses:', err);
+    }
+  };
 
   // Match existing counters in database
   const matchingCounters = useMemo(() => {
@@ -127,21 +252,43 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-2.5 bg-slate-900/95 text-teal-300 border border-teal-500/40 rounded-2xl shadow-2xl backdrop-blur-md text-xs font-bold animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <CheckCircle className="w-4 h-4 text-teal-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* DEFENSE SELECTION CARD */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
             <span className="text-xs font-black tracking-wider uppercase text-slate-400">
-              DEFENSE
+              DEFENSE (3 QUÁI THÚ)
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={handleOpenSaveModal}
+              disabled={!canSaveCurrent}
+              title={canSaveCurrent ? 'Lưu đội hình này vào danh sách phòng thủ' : 'Hãy chọn đủ 3 quái thú để lưu'}
+              className={`flex items-center gap-1.5 text-xs px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                canSaveCurrent
+                  ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-md'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-60'
+              }`}
+            >
+              <BookmarkCheck className="w-3.5 h-3.5" />
+              Lưu Đội Hình Này
+            </button>
+            <button
+              type="button"
               onClick={() => setDefenseIds([null, null, null])}
-              className="flex items-center gap-1 text-xs text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
+              className="flex items-center gap-1 text-xs px-2.5 py-1.5 text-slate-400 hover:text-red-400 hover:bg-slate-800/60 rounded-xl transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Xóa đội hình
@@ -185,6 +332,20 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* SAVED DEFENSES LIST SECTION */}
+      <SavedDefensesList
+        savedDefenses={savedDefenses}
+        activeDefenseIds={defenseIds}
+        allMonsters={allMonsters}
+        countersDatabase={countersDatabase}
+        onLoadDefense={handleLoadDefense}
+        onEditDefense={handleEditDefense}
+        onDeleteDefense={handleDeleteDefense}
+        onOpenSaveCurrent={handleOpenSaveModal}
+        canSaveCurrent={canSaveCurrent}
+        onRestoreDefaults={handleRestoreDefaults}
+      />
 
       {/* COUNTERS SECTION (Matches Screenshot 2 list of counters) */}
       <div className="space-y-4">
@@ -444,6 +605,18 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
           onOpenAddModal={onOpenAddMonster}
         />
       )}
+      {/* Save Defense Modal */}
+      <SaveDefenseModal
+        isOpen={isSaveDefenseModalOpen}
+        onClose={() => {
+          setIsSaveDefenseModalOpen(false);
+          setEditingDefense(null);
+        }}
+        defenseIds={defenseIds}
+        allMonsters={allMonsters}
+        onSave={handleSaveDefense}
+        editingDefense={editingDefense}
+      />
     </div>
   );
 };

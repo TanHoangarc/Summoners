@@ -18,6 +18,24 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "name", "element", "naturalStars", "role"]
+    },
+    "siege_defenses": {
+      "title": "Đội hình phòng thủ Siege (Siege Defenses)",
+      "description": "Danh sách các đội hình thủ Siege 3 quái thú được người dùng lưu lại trên Firestore",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "monsterIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "leaderMonsterId": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "monsterIds", "createdAt"]
     }
   }
 }

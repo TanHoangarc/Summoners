@@ -10,5 +10,10 @@ service cloud.firestore {
     match /counters/{counterId} {
       allow read, write: if true;
     }
+
+    // Siege Defenses collection: read and write allowed for saved defense formations
+    match /siege_defenses/{defenseId} {
+      allow read, write: if true;
+    }
   }
 }
