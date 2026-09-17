@@ -1,0 +1,6 @@
+{
+  "name": "Summoners War Helper",
+  "description": "Ứng dụng Summoners War hỗ trợ RTA Draft (5vs5), Siege Counter gợi ý đội hình và Quản lý danh sách Pet đầy đủ.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,23 @@
+{
+  "entities": {
+    "monsters": {
+      "title": "Quái thú (Monsters)",
+      "description": "Danh sách quái thú Summoners War được lưu tự động trên Firestore",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "awakenedName": { "type": "string" },
+        "element": { "type": "string" },
+        "naturalStars": { "type": "number" },
+        "avatarUrl": { "type": "string" },
+        "role": { "type": "string" },
+        "baseSpeed": { "type": "number" },
+        "leaderSkill": { "type": "string" },
+        "isCustom": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "element", "naturalStars", "role"]
+    }
+  }
+}

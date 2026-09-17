@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Monsters collection: read and write allowed for applet
+    match /monsters/{monsterId} {
+      allow read, write: if true;
+    }
+    
+    // Counters collection: read and write allowed for custom counters
+    match /counters/{counterId} {
+      allow read, write: if true;
+    }
+  }
+}
