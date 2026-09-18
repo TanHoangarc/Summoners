@@ -101,37 +101,37 @@ export function generateDynamicCounters(
   // Strategy 1: Bruiser / Sustain approach
   let bruiserComp: [string, string, string] = ['feng_yan', 'aaliyah', 'tractor'];
   let bruiserStrat = `1. Hướng Dẫn Sử Dụng Kỹ Năng (Skill):
-- Pet 1 (Feng Yan): Dùng Skill 2 tăng thủ + hồi phục, sau đó dùng Skill 1 đánh bẻ giáp mục tiêu chủ lực.
-- Pet 2 (Aaliyah): Bật Skill 3 tăng thủ và miễn nhiễm 3 lượt bảo vệ toàn đội.
-- Pet 3 (Tractor): Dùng Skill 1 & 2 khiêu khích và làm bao cát hút đòn không sợ trừ giáp.
+- Feng Yan: Dùng Skill 2 tăng thủ + hồi phục, sau đó dùng Skill 1 đánh bẻ giáp mục tiêu chủ lực.
+- Aaliyah: Bật Skill 3 tăng thủ và miễn nhiễm 3 lượt bảo vệ toàn đội.
+- Tractor: Dùng Skill 1 & 2 khiêu khích và làm bao cát hút đòn không sợ trừ giáp.
 
 2. Yêu Cầu Chỉ Số Chi Tiết Từng Pet:
-- Pet 1 (Feng Yan) yêu cầu (Atk: +300 | HP: +18.000 | SPD: +85)
-- Pet 2 (Aaliyah) yêu cầu (Atk: +250 | HP: +24.000 | SPD: +135)
-- Pet 3 (Tractor) yêu cầu (Atk: +400 | HP: +22.000 | SPD: +80)`;
+- Feng Yan yêu cầu (Atk: +300 | HP: +18.000 | SPD: +85)
+- Aaliyah yêu cầu (Atk: +250 | HP: +24.000 | SPD: +135)
+- Tractor yêu cầu (Atk: +400 | HP: +22.000 | SPD: +80)`;
   
   if (hasFire && !hasWind) {
     bruiserComp = ['tractor', 'aaliyah', 'theomars'];
     bruiserStrat = `1. Hướng Dẫn Sử Dụng Kỹ Năng (Skill):
-- Pet 1 (Tractor): Hút sát thương quái Lửa nhờ nội tại miễn trừ giáp, dùng Skill 2 khiêu khích.
-- Pet 2 (Aaliyah): Dùng Skill 3 buff Miễn Nhiễm + Tăng Thủ 3 lượt cho toàn đội.
-- Pet 3 (Theomars): Dùng Skill 2 trừ giáp và Skill 1 dứt điểm đối thủ.
+- Tractor: Hút sát thương quái Lửa nhờ nội tại miễn trừ giáp, dùng Skill 2 khiêu khích.
+- Aaliyah: Dùng Skill 3 buff Miễn Nhiễm + Tăng Thủ 3 lượt cho toàn đội.
+- Theomars: Dùng Skill 2 trừ giáp và Skill 1 dứt điểm đối thủ.
 
 2. Yêu Cầu Chỉ Số Chi Tiết Từng Pet:
-- Pet 1 (Tractor) yêu cầu (Atk: +400 | HP: +22.000 | SPD: +80)
-- Pet 2 (Aaliyah) yêu cầu (Atk: +250 | HP: +24.000 | SPD: +135)
-- Pet 3 (Theomars) yêu cầu (Atk: +1.400 | HP: +10.000 | SPD: +110)`;
+- Tractor yêu cầu (Atk: +400 | HP: +22.000 | SPD: +80)
+- Aaliyah yêu cầu (Atk: +250 | HP: +24.000 | SPD: +135)
+- Theomars yêu cầu (Atk: +1.400 | HP: +10.000 | SPD: +110)`;
   } else if (hasWater && !hasFire) {
     bruiserComp = ['feng_yan', 'riley', 'dominic'];
     bruiserStrat = `1. Hướng Dẫn Sử Dụng Kỹ Năng (Skill):
-- Pet 1 (Feng Yan): Dùng Skill 2 phản đòn, Skill 1 liên tục trừ giáp đối thủ hệ Nước.
-- Pet 2 (Riley): Dùng Skill 3 & 4 liên tục buff Tăng Công, hồi máu và miễn nhiễm.
-- Pet 3 (Dominic): Dùng Skill 2 & 1 xả sát thương chuẩn áp đảo quái đối phương.
+- Feng Yan: Dùng Skill 2 phản đòn, Skill 1 liên tục trừ giáp đối thủ hệ Nước.
+- Riley: Dùng Skill 3 & 4 liên tục buff Tăng Công, hồi máu và miễn nhiễm.
+- Dominic: Dùng Skill 2 & 1 xả sát thương chuẩn áp đảo quái đối phương.
 
 2. Yêu Cầu Chỉ Số Chi Tiết Từng Pet:
-- Pet 1 (Feng Yan) yêu cầu (Atk: +300 | HP: +19.000 | SPD: +90)
-- Pet 2 (Riley) yêu cầu (Atk: +300 | HP: +26.000 | SPD: +125)
-- Pet 3 (Dominic) yêu cầu (Atk: +1.600 | HP: +12.000 | SPD: +115)`;
+- Feng Yan yêu cầu (Atk: +300 | HP: +19.000 | SPD: +90)
+- Riley yêu cầu (Atk: +300 | HP: +26.000 | SPD: +125)
+- Dominic yêu cầu (Atk: +1.600 | HP: +12.000 | SPD: +115)`;
   }
 
   suggestions.push({
@@ -149,37 +149,37 @@ export function generateDynamicCounters(
   // Strategy 2: Snipe / Fast Cleave approach
   let snipeComp: [string, string, string] = ['covenant', 'dova', 'belial'];
   let snipeStrat = `1. Hướng Dẫn Sử Dụng Kỹ Năng (Skill):
-- Pet 1 (Covenant): Được Dova đẩy lượt, dùng ngay Skill 3 ngắm bắn xuyên giáp dứt điểm chủ lực địch.
-- Pet 2 (Dova): Dùng Skill 2 đẩy 100% thanh tấn công + buff Tăng Công trực tiếp cho Covenant.
-- Pet 3 (Belial): Dùng Skill 2 đánh xuyên giáp và liên tục hồi sinh quấy phá đối thủ.
+- Covenant: Được Dova đẩy lượt, dùng ngay Skill 3 ngắm bắn xuyên giáp dứt điểm chủ lực địch.
+- Dova: Dùng Skill 2 đẩy 100% thanh tấn công + buff Tăng Công trực tiếp cho Covenant.
+- Belial: Dùng Skill 2 đánh xuyên giáp và liên tục hồi sinh quấy phá đối thủ.
 
 2. Yêu Cầu Chỉ Số Chi Tiết Từng Pet:
-- Pet 1 (Covenant) yêu cầu (Atk: +1.950 | HP: +8.000 | SPD: +60)
-- Pet 2 (Dova) yêu cầu (Atk: +350 | HP: +21.000 | SPD: +195)
-- Pet 3 (Belial) yêu cầu (Atk: +1.800 | HP: +6.000 | SPD: +90)`;
+- Covenant yêu cầu (Atk: +1.950 | HP: +8.000 | SPD: +60)
+- Dova yêu cầu (Atk: +350 | HP: +21.000 | SPD: +195)
+- Belial yêu cầu (Atk: +1.800 | HP: +6.000 | SPD: +90)`;
 
   if (hasSpeedLead) {
     snipeComp = ['leo', 'woosa', 'feng_yan'];
     snipeStrat = `1. Hướng Dẫn Sử Dụng Kỹ Năng (Skill):
-- Pet 1 (Leo): Dùng Skill 1/Skill 2 giảm thanh tấn công quái nhanh nhất bên địch, khống chế tốc độ trận đấu.
-- Pet 2 (Woosa): Đi ngay sau Leo, dùng Skill 3 phủ khiên + Miễn Nhiễm 3 lượt toàn đội.
-- Pet 3 (Feng Yan): Dùng Skill 2 hồi phục, sau đó dùng Skill 1 dứt điểm từng mục tiêu.
+- Leo: Dùng Skill 1/Skill 2 giảm thanh tấn công quái nhanh nhất bên địch, khống chế tốc độ trận đấu.
+- Woosa: Đi ngay sau Leo, dùng Skill 3 phủ khiên + Miễn Nhiễm 3 lượt toàn đội.
+- Feng Yan: Dùng Skill 2 hồi phục, sau đó dùng Skill 1 dứt điểm từng mục tiêu.
 
 2. Yêu Cầu Chỉ Số Chi Tiết Từng Pet:
-- Pet 1 (Leo) yêu cầu (Atk: +1.200 | HP: +20.000 | SPD: +0)
-- Pet 2 (Woosa) yêu cầu (Atk: +400 | HP: +32.000 | SPD: +150)
-- Pet 3 (Feng Yan) yêu cầu (Atk: +300 | HP: +19.000 | SPD: +85)`;
+- Leo yêu cầu (Atk: +1.200 | HP: +20.000 | SPD: +0)
+- Woosa yêu cầu (Atk: +400 | HP: +32.000 | SPD: +150)
+- Feng Yan yêu cầu (Atk: +300 | HP: +19.000 | SPD: +85)`;
   } else if (hasImmunityOrShield) {
     snipeComp = ['chilling', 'feng_yan', 'aaliyah'];
     snipeStrat = `1. Hướng Dẫn Sử Dụng Kỹ Năng (Skill):
-- Pet 1 (Chilling): Dùng Skill 1 và nội tại liên tục xóa bùa Will/khiên của đối thủ.
-- Pet 2 (Feng Yan): Dùng Skill 2 phản đòn, Skill 1 bẻ giáp khi mục tiêu mất bùa Will.
-- Pet 3 (Aaliyah): Dùng Skill 3 buff Miễn Nhiễm + Tăng Thủ bảo đảm an toàn.
+- Chilling: Dùng Skill 1 và nội tại liên tục xóa bùa Will/khiên của đối thủ.
+- Feng Yan: Dùng Skill 2 phản đòn, Skill 1 bẻ giáp khi mục tiêu mất bùa Will.
+- Aaliyah: Dùng Skill 3 buff Miễn Nhiễm + Tăng Thủ bảo đảm an toàn.
 
 2. Yêu Cầu Chỉ Số Chi Tiết Từng Pet:
-- Pet 1 (Chilling) yêu cầu (Atk: +650 | HP: +19.000 | SPD: +140)
-- Pet 2 (Feng Yan) yêu cầu (Atk: +300 | HP: +18.000 | SPD: +85)
-- Pet 3 (Aaliyah) yêu cầu (Atk: +250 | HP: +24.000 | SPD: +135)`;
+- Chilling yêu cầu (Atk: +650 | HP: +19.000 | SPD: +140)
+- Feng Yan yêu cầu (Atk: +300 | HP: +18.000 | SPD: +85)
+- Aaliyah yêu cầu (Atk: +250 | HP: +24.000 | SPD: +135)`;
   }
 
   suggestions.push({
@@ -206,14 +206,14 @@ export function generateDynamicCounters(
     date: 'Hôm nay',
     difficulty: 'Trung bình',
     strategy: `1. Hướng Dẫn Sử Dụng Kỹ Năng (Skill):
-- Pet 1 (Woosa): Dùng Skill 3 phủ khiên chắn và miễn nhiễm 3 lượt ngay lượt đầu tiên.
-- Pet 2 (Cheongpung): Dùng Skill 3 xóa buff + giảm thanh tấn công + reset hồi chiêu toàn bộ địch, sau đó Skill 2 trừ giáp.
-- Pet 3 (Dominic): Dùng Skill 2 và Skill 1 dồn sát thương chuẩn kết liễu mục tiêu đã bị khống chế.
+- Woosa: Dùng Skill 3 phủ khiên chắn và miễn nhiễm 3 lượt ngay lượt đầu tiên.
+- Cheongpung: Dùng Skill 3 xóa buff + giảm thanh tấn công + reset hồi chiêu toàn bộ địch, sau đó Skill 2 trừ giáp.
+- Dominic: Dùng Skill 2 và Skill 1 dồn sát thương chuẩn kết liễu mục tiêu đã bị khống chế.
 
 2. Yêu Cầu Chỉ Số Chi Tiết Từng Pet:
-- Pet 1 (Woosa) yêu cầu (Atk: +400 | HP: +32.000 | SPD: +150)
-- Pet 2 (Cheongpung) yêu cầu (Atk: +800 | HP: +18.000 | SPD: +140)
-- Pet 3 (Dominic) yêu cầu (Atk: +1.600 | HP: +12.000 | SPD: +115)`,
+- Woosa yêu cầu (Atk: +400 | HP: +32.000 | SPD: +150)
+- Cheongpung yêu cầu (Atk: +800 | HP: +18.000 | SPD: +140)
+- Dominic yêu cầu (Atk: +1.600 | HP: +12.000 | SPD: +115)`,
   });
 
   return suggestions;

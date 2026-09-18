@@ -10,7 +10,6 @@ import {
   subscribeToMonsters,
   saveMonsterToFirestore,
   deleteMonsterFromFirestore,
-  seedDefaultMonstersToFirestore,
 } from './lib/monsterService';
 
 const STORAGE_KEY = 'sw_monsters_v1';
@@ -119,19 +118,6 @@ export default function App() {
     }
   };
 
-  // Nạp dữ liệu mặc định vào Firebase
-  const handleSeedDefaultMonsters = async () => {
-    try {
-      setIsSyncing(true);
-      await seedDefaultMonstersToFirestore();
-      setMonsters(DEFAULT_MONSTERS);
-    } catch (err) {
-      console.error('Failed to seed default monsters to Firebase:', err);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
   const handleUpdateAvatarUrl = async (monsterId: string, newUrl: string) => {
     const target = monsters.find((m) => m.id === monsterId);
     if (!target) return;
@@ -185,7 +171,6 @@ export default function App() {
             onEditMonster={handleOpenEditMonster}
             onDeleteMonster={handleDeleteMonster}
             onUpdateAvatarUrl={handleUpdateAvatarUrl}
-            onSeedDefault={handleSeedDefaultMonsters}
             isSyncing={isSyncing}
           />
         )}

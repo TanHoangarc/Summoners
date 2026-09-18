@@ -19,6 +19,8 @@ interface QuickPickSuggestionsProps {
   onPickMonster: (monsterId: string) => void;
   onOpenAddMonster: () => void;
   onShowToast: (msg: string) => void;
+  favoriteIds?: string[];
+  onUpdateFavoriteIds?: (ids: string[]) => void;
 }
 
 const STORAGE_KEY_FAVORITES = 'sw_rta_favorite_picks_v3';
@@ -31,9 +33,11 @@ export const QuickPickSuggestions: React.FC<QuickPickSuggestionsProps> = ({
   onPickMonster,
   onOpenAddMonster,
   onShowToast,
+  favoriteIds: externalFavorites,
+  onUpdateFavoriteIds,
 }) => {
   // Favorite monster IDs with local persistence - Default empty as requested by user
-  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
+  const [internalFavoriteIds, setInternalFavoriteIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_FAVORITES);
       if (saved) {
@@ -45,6 +49,13 @@ export const QuickPickSuggestions: React.FC<QuickPickSuggestionsProps> = ({
     }
     return [];
   });
+
+  const favoriteIds = externalFavorites !== undefined ? externalFavorites : internalFavoriteIds;
+  const setFavoriteIds = (valOrFn: string[] | ((prev: string[]) => string[])) => {
+    const updated = typeof valOrFn === 'function' ? valOrFn(favoriteIds) : valOrFn;
+    setInternalFavoriteIds(updated);
+    if (onUpdateFavoriteIds) onUpdateFavoriteIds(updated);
+  };
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isManageMode, setIsManageMode] = useState(false);
@@ -137,7 +148,7 @@ export const QuickPickSuggestions: React.FC<QuickPickSuggestionsProps> = ({
         </div>
 
         {/* Action icons */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setIsManageMode(!isManageMode)}

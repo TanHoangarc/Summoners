@@ -8,7 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { SiegeCounterStrategy } from '../types';
-import { DEFAULT_SIEGE_COUNTERS } from '../data/defaultCounters';
+import { DEFAULT_SIEGE_COUNTERS, DRAFT_COUNTER_IDS } from '../data/defaultCounters';
 
 const COLLECTION_NAME = 'counters';
 export const STORAGE_KEY_SIEGE_COUNTERS = 'sw_siege_counters_v1';
@@ -29,7 +29,11 @@ export function subscribeToSiegeCounters(
       } else {
         const list: SiegeCounterStrategy[] = [];
         snapshot.forEach((docSnap) => {
-          list.push(docSnap.data() as SiegeCounterStrategy);
+          const item = docSnap.data() as SiegeCounterStrategy;
+          // Filter out draft / sample counters
+          if (!DRAFT_COUNTER_IDS.includes(item.id)) {
+            list.push(item);
+          }
         });
         onUpdate(list);
       }
@@ -69,9 +73,26 @@ export async function deleteSiegeCounterFromFirestore(
 }
 
 /**
+ * Delete any previously seeded draft counters from Firestore
+ */
+export async function deleteDraftCountersFromFirestore(): Promise<void> {
+  try {
+    const batch = writeBatch(db);
+    for (const id of DRAFT_COUNTER_IDS) {
+      const docRef = doc(db, COLLECTION_NAME, id);
+      batch.delete(docRef);
+    }
+    await batch.commit();
+  } catch (err) {
+    console.warn('Draft counters cleanup warning:', err);
+  }
+}
+
+/**
  * Seed default counters to Firestore if none exist
  */
 export async function seedDefaultCountersToFirestore(): Promise<number> {
+  if (!DEFAULT_SIEGE_COUNTERS.length) return 0;
   const batch = writeBatch(db);
   let count = 0;
 
@@ -89,3 +110,4 @@ export async function seedDefaultCountersToFirestore(): Promise<number> {
   await batch.commit();
   return count;
 }
+

@@ -24,7 +24,6 @@ interface MonsterManagerViewProps {
   onEditMonster: (monster: Monster) => void;
   onDeleteMonster: (monsterId: string) => void;
   onUpdateAvatarUrl: (monsterId: string, newUrl: string) => void;
-  onSeedDefault?: () => void;
   isSyncing?: boolean;
 }
 
@@ -34,7 +33,6 @@ export const MonsterManagerView: React.FC<MonsterManagerViewProps> = ({
   onEditMonster,
   onDeleteMonster,
   onUpdateAvatarUrl,
-  onSeedDefault,
   isSyncing = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -151,17 +149,6 @@ export const MonsterManagerView: React.FC<MonsterManagerViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-stretch sm:self-auto">
-          {onSeedDefault && (
-            <button
-              type="button"
-              onClick={onSeedDefault}
-              className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 rounded-xl text-xs font-semibold transition-all cursor-pointer"
-              title="Thêm danh sách quái thú mẫu Summoners War vào Firebase"
-            >
-              Nạp dữ liệu mặc định
-            </button>
-          )}
-
           <button
             type="button"
             onClick={onAddMonster}

@@ -22,6 +22,12 @@ interface MonsterAvatarProps {
   showQuickControls?: boolean;
   showTooltip?: boolean;
   killPriority?: number | null;
+  ghostMonster?: Monster | null;
+  onAcceptGhost?: () => void;
+  isSuggestedLeader?: boolean;
+  isSuggestedBan?: boolean;
+  onAcceptSuggestedLeader?: () => void;
+  onAcceptSuggestedBan?: () => void;
 }
 
 const SIZE_MAP = {
@@ -52,11 +58,101 @@ export const MonsterAvatar: React.FC<MonsterAvatarProps> = ({
   showQuickControls = false,
   showTooltip = false,
   killPriority,
+  ghostMonster,
+  onAcceptGhost,
+  isSuggestedLeader = false,
+  isSuggestedBan = false,
+  onAcceptSuggestedLeader,
+  onAcceptSuggestedBan,
 }) => {
   const [imageError, setImageError] = useState(false);
 
   // If no monster is picked yet
   if (!monster) {
+    // Nếu có quái thú gợi ý tự động (dưới dạng mờ để chọn nhanh)
+    if (ghostMonster) {
+      const ghostElementInfo = ELEMENT_COLORS[ghostMonster.element] || ELEMENT_COLORS.water;
+
+      return (
+        <div className={`relative flex flex-col items-center select-none group ${className}`}>
+          {isFirstPick && (
+            <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-30 bg-blue-500 text-white font-black text-[8.5px] sm:text-[9.5px] px-1.5 py-0.5 rounded shadow-md uppercase tracking-wider leading-none pointer-events-none">
+              1ST
+            </div>
+          )}
+
+          {/* Main Ghost Avatar Card - dạng mờ với hiệu ứng viền xanh nhấp nháy */}
+          <div className="relative">
+            <div
+              onClick={() => {
+                if (onAcceptGhost) onAcceptGhost();
+                else if (onClick) onClick();
+              }}
+              title={`Gợi ý tự động: ${ghostMonster.name} - Nhấp để chọn nhanh`}
+              className={`relative ${SIZE_MAP[size]} rounded-2xl overflow-hidden transition-all duration-200 shadow-lg cursor-pointer bg-slate-950/80 border-2 border-dashed border-emerald-400 ring-2 ring-emerald-500/40 hover:ring-emerald-400 hover:scale-105 opacity-60 hover:opacity-100`}
+            >
+              {ghostMonster.avatarUrl && !imageError ? (
+                <img
+                  src={ghostMonster.avatarUrl}
+                  alt={ghostMonster.name}
+                  onError={() => setImageError(true)}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover object-center grayscale-[20%] hover:grayscale-0"
+                />
+              ) : (
+                <div
+                  className={`w-full h-full flex flex-col items-center justify-center p-1 bg-gradient-to-br ${ghostElementInfo.gradient} text-slate-950 font-bold`}
+                >
+                  <img
+                    src={ghostElementInfo.iconUrl}
+                    alt={ghostMonster.element}
+                    className="w-5 h-5 object-contain drop-shadow-sm mb-0.5"
+                  />
+                  <span className="text-[9px] tracking-tighter uppercase font-extrabold truncate max-w-full px-0.5">
+                    {ghostMonster.name.slice(0, 4)}
+                  </span>
+                </div>
+              )}
+
+              {/* Lớp phủ mờ & chữ gợi ý */}
+              <div className="absolute inset-0 bg-emerald-950/30 group-hover:bg-transparent transition-colors flex items-center justify-center pointer-events-none">
+                <span className="text-[10px] font-black text-emerald-300 bg-slate-950/80 px-1.5 py-0.5 rounded border border-emerald-500/60 group-hover:hidden">
+                  Chọn
+                </span>
+              </div>
+
+              {/* Pick Order Badge */}
+              {pickOrder !== undefined && (
+                <div className="absolute bottom-0.5 right-0.5 z-20 bg-black/90 text-white font-extrabold text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.2 sm:py-0.5 rounded shadow-md border border-black/50 leading-none pointer-events-none">
+                  {pickOrder}
+                </div>
+              )}
+            </div>
+
+            {/* Nút nhỏ bên góc để đổi pet khác nếu không muốn dùng gợi ý */}
+            {onClick && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClick();
+                }}
+                title="Chọn quái thú khác"
+                className="absolute -bottom-1 -left-1 z-30 w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 flex items-center justify-center text-[10px] font-bold shadow-md cursor-pointer hover:scale-110"
+              >
+                +
+              </button>
+            )}
+          </div>
+
+          {/* Tên quái thú mờ bên dưới */}
+          <span className="text-[9px] font-bold text-emerald-400/90 text-center truncate max-w-[80px] mt-1 leading-tight">
+            {ghostMonster.name}
+          </span>
+        </div>
+      );
+    }
+
     return (
       <div className={`relative flex flex-col items-center select-none group ${className}`}>
         {isFirstPick && (
@@ -117,16 +213,15 @@ export const MonsterAvatar: React.FC<MonsterAvatarProps> = ({
         {/* Kill Priority Target Badge: Top-left */}
         {killPriority !== undefined && killPriority !== null && (
           <div
-            className={`absolute -top-2 -left-2 z-30 flex items-center gap-0.5 text-white font-black text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-full shadow-lg border leading-none pointer-events-none ${
+            className={`absolute -top-2 -left-2 z-30 flex items-center justify-center text-white font-black text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-full shadow-lg border leading-none pointer-events-none ${
               killPriority === 1
-                ? 'bg-rose-600 border-rose-400 ring-2 ring-rose-500/50 animate-pulse'
+                ? 'bg-rose-600 border-rose-400 ring-2 ring-rose-500/50'
                 : killPriority === 2
                 ? 'bg-amber-500 border-amber-300 ring-1 ring-amber-400/40'
                 : 'bg-slate-800 border-slate-600 text-slate-200'
             }`}
-            title={`Mục tiêu tiêu diệt #${killPriority}`}
+            title={`Thứ tự tiêu diệt #${killPriority}`}
           >
-            <span className="text-[10px]">🎯</span>
             <span>#{killPriority}</span>
           </div>
         )}
@@ -136,6 +231,40 @@ export const MonsterAvatar: React.FC<MonsterAvatarProps> = ({
           <div className="absolute -top-2 left-1/2 -translate-x-1/2 z-30 bg-blue-500 text-white font-black text-[8.5px] sm:text-[9.5px] px-1.5 sm:px-2 py-0.5 rounded shadow-md uppercase tracking-wider leading-none pointer-events-none">
             1ST
           </div>
+        )}
+
+        {/* Gợi Ý Leader Badge/Button */}
+        {isSuggestedLeader && !isLeader && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onAcceptSuggestedLeader) onAcceptSuggestedLeader();
+              else if (onToggleLeader) onToggleLeader();
+            }}
+            title="Gợi ý Leader theo lịch sử! Nhấp để đặt làm Leader"
+            className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-40 bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black text-[8px] sm:text-[9px] px-2 py-0.5 rounded-full shadow-lg border border-amber-300 ring-2 ring-amber-400/50 flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 whitespace-nowrap"
+          >
+            <Crown className="w-2.5 h-2.5 fill-current" />
+            <span>LEAD</span>
+          </button>
+        )}
+
+        {/* Gợi Ý Cấm Badge/Button */}
+        {isSuggestedBan && !isBanned && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onAcceptSuggestedBan) onAcceptSuggestedBan();
+              else if (onToggleBan) onToggleBan();
+            }}
+            title="Gợi ý Cấm pet nguy hiểm nhất này theo lịch sử! Nhấp để Cấm"
+            className="absolute -top-2.5 left-1/2 -translate-x-1/2 z-40 bg-gradient-to-r from-rose-600 to-red-500 text-white font-black text-[8px] sm:text-[9px] px-2 py-0.5 rounded-full shadow-lg border border-rose-300 ring-2 ring-rose-500/50 flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 whitespace-nowrap"
+          >
+            <Ban className="w-2.5 h-2.5 stroke-[3]" />
+            <span>CẤM</span>
+          </button>
         )}
 
         {/* Delete / Clear button at top corner ('x' icon to remove pet image) */}
@@ -163,6 +292,10 @@ export const MonsterAvatar: React.FC<MonsterAvatarProps> = ({
             ${
               isLeader
                 ? 'border-[2.5px] border-amber-400 ring-2 ring-amber-400/30 shadow-[0_0_12px_rgba(251,191,36,0.35)]'
+                : isSuggestedLeader
+                ? 'border-[2.5px] border-amber-400 ring-2 ring-amber-400/70 shadow-[0_0_15px_rgba(251,191,36,0.5)] animate-pulse'
+                : isSuggestedBan
+                ? 'border-[2.5px] border-rose-500 ring-2 ring-rose-500/70 shadow-[0_0_15px_rgba(244,63,94,0.5)] animate-pulse'
                 : 'border-2 border-slate-700/90 hover:border-slate-400'
             }
             ${isBanned ? 'brightness-90' : 'hover:brightness-105'}

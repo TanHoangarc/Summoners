@@ -38,9 +38,9 @@ function generateRuleBasedStrategy(
   defenseMonsters: Array<{ name: string; element?: string }>,
   counterMonsters: Array<{ name: string; element?: string }>
 ) {
-  const p1 = counterMonsters[0]?.name || "Pet 1";
-  const p2 = counterMonsters[1]?.name || "Pet 2";
-  const p3 = counterMonsters[2]?.name || "Pet 3";
+  const p1 = counterMonsters[0]?.name || "Pet Counter 1";
+  const p2 = counterMonsters[1]?.name || "Pet Counter 2";
+  const p3 = counterMonsters[2]?.name || "Pet Counter 3";
 
   const targetName = defenseMonsters[0]?.name || "mục tiêu nguy hiểm nhất";
   const defNames = defenseMonsters.map((m) => m.name).join(", ");
@@ -56,14 +56,14 @@ function generateRuleBasedStrategy(
   }
 
   const strategy = `1. Hướng Dẫn Sử Dụng Kỹ Năng (Skill):
-- Pet 1 (${p1}): Khởi đầu dùng Skill 2 hoặc Skill 3 để xóa bùa Will/khiên team địch hoặc buff Tăng Công / Miễn Nhiễm cho đồng đội.
-- Pet 2 (${p2}): Dùng Skill bẻ giáp (Defense Break) hoặc khống chế làm choáng/khóa skill nhắm thẳng vào ${targetName}.
-- Pet 3 (${p3}): Kích hoạt Skill sát thương chủ lực (Skill 3 / Skill 2) để dồn sát thương kết liễu ngay ${targetName}.
+- ${p1}: Khởi đầu dùng Skill 2 hoặc Skill 3 để xóa bùa Will/khiên team địch hoặc buff Tăng Công / Miễn Nhiễm cho đồng đội.
+- ${p2}: Dùng Skill bẻ giáp (Defense Break) hoặc khống chế làm choáng/khóa skill nhắm thẳng vào ${targetName}.
+- ${p3}: Kích hoạt Skill sát thương chủ lực (Skill 3 / Skill 2) để dồn sát thương kết liễu ngay ${targetName}.
 
 2. Yêu Cầu Chỉ Số Chi Tiết Từng Pet:
-- Pet 1 (${p1}) yêu cầu (Atk: +500 ~ +800 | HP: +20.000 ~ +25.000 | SPD: +140 ~ +160)
-- Pet 2 (${p2}) yêu cầu (Atk: +700 ~ +1.000 | HP: +18.000 ~ +22.000 | SPD: +130 ~ +145)
-- Pet 3 (${p3}) yêu cầu (Atk: +1.500 ~ +1.900 | HP: +8.000 ~ +12.000 | SPD: +105 ~ +125)
+- ${p1} yêu cầu (Atk: +500 ~ +800 | HP: +20.000 ~ +25.000 | SPD: +140 ~ +160)
+- ${p2} yêu cầu (Atk: +700 ~ +1.000 | HP: +18.000 ~ +22.000 | SPD: +130 ~ +145)
+- ${p3} yêu cầu (Atk: +1.500 ~ +1.900 | HP: +8.000 ~ +12.000 | SPD: +105 ~ +125)
 
 3. Mục Tiêu Dứt Điểm (Kill Order) & Lưu Ý:
 - Thứ tự hạ gục: Tập trung tiêu diệt ${targetName} trước tiên, sau đó lần lượt dọn dẹp các mục tiêu phụ.
@@ -104,28 +104,32 @@ app.post("/api/ai-counter-strategy", async (req, res) => {
       });
     }
 
+    const c1Name = counterMonsters[0]?.name || "Pet Counter 1";
+    const c2Name = counterMonsters[1]?.name || "Pet Counter 2";
+    const c3Name = counterMonsters[2]?.name || "Pet Counter 3";
+
     const prompt = `Bạn là một chuyên gia bậc thầy về chiến thuật Summoners War (Sky Arena) ở cấp độ Siege War Tournaments / G3.
 Hãy phân tích kèo đối đầu chi tiết giữa:
 - ĐỘI HÌNH PHÒNG THỦ (DEFENSE): ${defenseMonsters
       .map((m) => `${m.name} (${m.element || "Không rõ hệ"})`)
       .join(", ")}
 - ĐỘI HÌNH KHẮC CHẾ (COUNTER):
-  + Pet 1: ${counterMonsters[0]?.name} (${counterMonsters[0]?.element || "Không rõ hệ"})
-  + Pet 2: ${counterMonsters[1]?.name} (${counterMonsters[1]?.element || "Không rõ hệ"})
-  + Pet 3: ${counterMonsters[2]?.name} (${counterMonsters[2]?.element || "Không rõ hệ"})
+  + ${c1Name} (${counterMonsters[0]?.element || "Không rõ hệ"})
+  + ${c2Name} (${counterMonsters[1]?.element || "Không rõ hệ"})
+  + ${c3Name} (${counterMonsters[2]?.element || "Không rõ hệ"})
 
 YÊU CẦU BẮT BUỘC VỀ ĐỊNH DẠNG CHIẾN THUẬT (TRONG TRƯỜNG "strategy"):
-Phải tuân thủ chính xác cấu trúc dưới đây bằng tiếng Việt:
+Phải tuân thủ chính xác cấu trúc dưới đây bằng tiếng Việt. Chú ý: TUYỆT ĐỐI KHÔNG dùng chữ "Pet 1", "Pet 2", "Pet 3", mà PHẢI THAY THẾ BẰNG CHÍNH TÊN THẬT CỦA PET COUNTER (${c1Name}, ${c2Name}, ${c3Name}):
 
 1. Hướng Dẫn Sử Dụng Kỹ Năng (Skill):
-- Pet 1 (${counterMonsters[0]?.name}): Sử dụng Skill ? (nêu rõ Skill 1, 2 hay 3, nhắm vào mục tiêu nào, mục đích gì)
-- Pet 2 (${counterMonsters[1]?.name}): Sử dụng Skill ? (nêu rõ Skill 1, 2 hay 3, nhắm vào mục tiêu nào, mục đích gì)
-- Pet 3 (${counterMonsters[2]?.name}): Sử dụng Skill ? (nêu rõ Skill 1, 2 hay 3, nhắm vào mục tiêu nào, mục đích gì)
+- ${c1Name}: Sử dụng Skill ? (nêu rõ Skill 1, 2 hay 3, nhắm vào mục tiêu nào, mục đích gì)
+- ${c2Name}: Sử dụng Skill ? (nêu rõ Skill 1, 2 hay 3, nhắm vào mục tiêu nào, mục đích gì)
+- ${c3Name}: Sử dụng Skill ? (nêu rõ Skill 1, 2 hay 3, nhắm vào mục tiêu nào, mục đích gì)
 
 2. Yêu Cầu Chỉ Số Chi Tiết Từng Pet:
-- Pet 1 (${counterMonsters[0]?.name}) yêu cầu (Atk: +... | HP: +... | SPD: +...)
-- Pet 2 (${counterMonsters[1]?.name}) yêu cầu (Atk: +... | HP: +... | SPD: +...)
-- Pet 3 (${counterMonsters[2]?.name}) yêu cầu (Atk: +... | HP: +... | SPD: +...)
+- ${c1Name} yêu cầu (Atk: +... | HP: +... | SPD: +...)
+- ${c2Name} yêu cầu (Atk: +... | HP: +... | SPD: +...)
+- ${c3Name} yêu cầu (Atk: +... | HP: +... | SPD: +...)
 
 3. Mục Tiêu Dứt Điểm (Kill Order) & Lưu Ý:
 - Thứ tự hạ gục ưu tiên và lưu ý phòng chống rủi ro (Violent proc, khống chế, phản đòn).

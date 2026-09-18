@@ -88,17 +88,18 @@ export const KillOrderPanel: React.FC<KillOrderPanelProps> = ({
   onUpdateKillOrder,
   onShowToast,
 }) => {
-  // Get active picked enemy monsters
+  // Get active picked enemy monsters (loại bỏ pet đã bị cấm - isBanned)
   const pickedEnemyMonsters = useMemo(() => {
     return enemyTeam
-      .map((slot) => slot.monsterId ? getMonsterById(allMonsters, slot.monsterId) : null)
+      .filter((slot) => !slot.isBanned)
+      .map((slot) => (slot.monsterId ? getMonsterById(allMonsters, slot.monsterId) : null))
       .filter((m): m is Monster => Boolean(m));
   }, [enemyTeam, allMonsters]);
 
-  // Ensure killOrder contains all currently picked enemy monsters
+  // Ensure killOrder contains all currently unbanned picked enemy monsters
   const activeOrderedMonsters = useMemo(() => {
     const pickedIds = pickedEnemyMonsters.map((m) => m.id);
-    // Keep existing order for monsters still picked
+    // Keep existing order for monsters still picked and unbanned
     const ordered = killOrder.filter((id) => pickedIds.includes(id));
     // Append any newly picked monsters that aren't in killOrder yet
     pickedIds.forEach((id) => {
@@ -176,7 +177,7 @@ export const KillOrderPanel: React.FC<KillOrderPanelProps> = ({
             <h3 className="text-xs sm:text-sm font-bold text-slate-100 flex items-center gap-1.5 leading-none">
               Thứ Tự Cần Giết
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
-                {activeOrderedMonsters.length}/5
+                {activeOrderedMonsters.length}
               </span>
             </h3>
           </div>

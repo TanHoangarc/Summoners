@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Swords,
   Ban,
@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   BookmarkCheck,
   AlertTriangle,
+  Zap,
+  Sparkles,
 } from 'lucide-react';
 import { Monster, RTAMatchRecord, RTASlot } from '../../types';
 import { getMonsterById } from '../../utils/monsterHelpers';
@@ -18,6 +20,10 @@ import { MonsterAvatar } from '../common/MonsterAvatar';
 import { MonsterPickerModal } from '../common/MonsterPickerModal';
 import { QuickPickSuggestions } from './QuickPickSuggestions';
 import { KillOrderPanel } from './KillOrderPanel';
+import {
+  computeRTAAutoSuggestions,
+  AutoSuggestionState,
+} from '../../utils/rtaAutoSuggester';
 
 interface RTADraftViewProps {
   allMonsters: Monster[];
@@ -28,6 +34,7 @@ interface RTADraftViewProps {
 const RTA_HISTORY_STORAGE_KEY = 'sw_rta_match_history_records_v1';
 
 const DEFAULT_SAMPLE_HISTORY: RTAMatchRecord[] = [
+  // Trận 1: Team Trái (Tôi) là 1st Pick -> Moore, Shizuka, Karnal, Savannah (Lead), Tractor (Cấm)
   {
     id: 'match-1',
     createdAt: Date.now() - 3 * 86400000,
@@ -45,6 +52,46 @@ const DEFAULT_SAMPLE_HISTORY: RTAMatchRecord[] = [
       { monsterId: 'woosa', isBanned: false, isLeader: false, pickOrder: 6 },
       { monsterId: 'miles', isBanned: false, isLeader: false, pickOrder: 7 },
       { monsterId: 'dominic', isBanned: false, isLeader: true, pickOrder: 10 },
+    ],
+  },
+  // Trận 2: Team Phải (Địch) là 1st Pick -> Địch pick #1 Oliver, Tôi pick #2 Moore (Lead), #3 Shizuka...
+  {
+    id: 'match-2',
+    createdAt: Date.now() - 2 * 86400000,
+    result: 'VICTORY',
+    myTeam: [
+      { monsterId: 'moore', isBanned: false, isLeader: true, pickOrder: 2 },
+      { monsterId: 'shizuka', isBanned: false, isLeader: false, pickOrder: 3 },
+      { monsterId: 'karnal', isBanned: false, isLeader: false, pickOrder: 6 },
+      { monsterId: 'cheongpung', isBanned: false, isLeader: false, pickOrder: 7 },
+      { monsterId: 'savannah', isBanned: false, isLeader: false, pickOrder: 10 },
+    ],
+    enemyTeam: [
+      { monsterId: 'oliver', isBanned: true, isLeader: false, pickOrder: 1 },
+      { monsterId: 'seara', isBanned: false, isLeader: true, pickOrder: 4 },
+      { monsterId: 'woosa', isBanned: false, isLeader: false, pickOrder: 5 },
+      { monsterId: 'dominic', isBanned: false, isLeader: false, pickOrder: 8 },
+      { monsterId: 'miles', isBanned: false, isLeader: false, pickOrder: 9 },
+    ],
+  },
+  // Trận 3: Team Trái 1st Pick Oliver Speed Team
+  {
+    id: 'match-3',
+    createdAt: Date.now() - 1 * 86400000,
+    result: 'VICTORY',
+    myTeam: [
+      { monsterId: 'oliver', isBanned: false, isLeader: true, pickOrder: 1 },
+      { monsterId: 'cheongpung', isBanned: false, isLeader: false, pickOrder: 4 },
+      { monsterId: 'moore', isBanned: false, isLeader: false, pickOrder: 5 },
+      { monsterId: 'savannah', isBanned: false, isLeader: false, pickOrder: 8 },
+      { monsterId: 'sagar', isBanned: false, isLeader: false, pickOrder: 9 },
+    ],
+    enemyTeam: [
+      { monsterId: 'vanessa', isBanned: false, isLeader: false, pickOrder: 2 },
+      { monsterId: 'woosa', isBanned: false, isLeader: true, pickOrder: 3 },
+      { monsterId: 'dominic', isBanned: true, isLeader: false, pickOrder: 6 },
+      { monsterId: 'miles', isBanned: false, isLeader: false, pickOrder: 7 },
+      { monsterId: 'douglas', isBanned: false, isLeader: false, pickOrder: 10 },
     ],
   },
 ];
@@ -135,6 +182,164 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
       setMyTeam((prev) => prev.map((s, idx) => ({ ...s, pickOrder: myOrders[idx] })));
       setEnemyTeam((prev) => prev.map((s, idx) => ({ ...s, pickOrder: enemyOrders[idx] })));
     }
+  };
+
+  // Công tắc bật tắt chế độ Auto Gợi ý (Màu xanh = Bật, Màu đỏ = Tắt)
+  const [isAutoSuggest, setIsAutoSuggest] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('sw_rta_auto_mode');
+      if (saved !== null) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return true; // Mặc định BẬT để hỗ trợ người dùng ngay lập tức
+  });
+
+  // Đồng bộ danh sách Pet Tôi Hay Pick với QuickPickSuggestions
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('sw_rta_favorite_picks_v3');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+
+  // Lưu trạng thái công tắc auto vào localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('sw_rta_auto_mode', JSON.stringify(isAutoSuggest));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [isAutoSuggest]);
+
+  // Tính toán gợi ý tự động dựa trên trình tự pick và lịch sử thi đấu
+  const autoSuggestions = useMemo<AutoSuggestionState>(() => {
+    if (!isAutoSuggest) {
+      return {
+        isActive: false,
+        stage: 'idle',
+        targetPickOrders: [],
+        suggestedMonstersByOrder: {},
+        suggestedLeaderMonsterId: null,
+        suggestedBanMonsterId: null,
+      };
+    }
+    return computeRTAAutoSuggestions(
+      firstPickSide,
+      myTeam,
+      enemyTeam,
+      matchHistory,
+      allMonsters,
+      favoriteIds
+    );
+  }, [isAutoSuggest, firstPickSide, myTeam, enemyTeam, matchHistory, allMonsters, favoriteIds]);
+
+  // Chấp nhận chọn nhanh quái thú gợi ý mờ vào ô cờ
+  const handleAcceptSuggestedPick = (pickOrder: number) => {
+    const monster = autoSuggestions.suggestedMonstersByOrder[pickOrder];
+    if (!monster) return;
+
+    const myIdx = myTeam.findIndex((s) => s.pickOrder === pickOrder);
+    if (myIdx !== -1) {
+      setMyTeam((prev) => {
+        const next = [...prev];
+        next[myIdx] = { ...next[myIdx], monsterId: monster.id };
+        return next;
+      });
+      showToast(`⚡ Auto: Đã chọn nhanh ${monster.name} vào vị trí #${pickOrder}`);
+      return;
+    }
+
+    const enemyIdx = enemyTeam.findIndex((s) => s.pickOrder === pickOrder);
+    if (enemyIdx !== -1) {
+      setEnemyTeam((prev) => {
+        const next = [...prev];
+        next[enemyIdx] = { ...next[enemyIdx], monsterId: monster.id };
+        return next;
+      });
+      if (!killOrder.includes(monster.id)) {
+        setKillOrder((prev) => [...prev, monster.id]);
+      }
+      showToast(`⚡ Auto: Đã chọn nhanh ${monster.name} vào vị trí #${pickOrder}`);
+    }
+  };
+
+  // Áp dụng tất cả các quái thú gợi ý hiện tại của đợt pick
+  const handleAcceptAllCurrentSuggestions = () => {
+    const orders = autoSuggestions.targetPickOrders;
+    if (orders.length === 0) return;
+    const names: string[] = [];
+
+    orders.forEach((order) => {
+      const monster = autoSuggestions.suggestedMonstersByOrder[order];
+      if (monster) {
+        names.push(monster.name);
+        const myIdx = myTeam.findIndex((s) => s.pickOrder === order);
+        if (myIdx !== -1) {
+          setMyTeam((prev) => {
+            const next = [...prev];
+            next[myIdx] = { ...next[myIdx], monsterId: monster.id };
+            return next;
+          });
+        }
+        const enemyIdx = enemyTeam.findIndex((s) => s.pickOrder === order);
+        if (enemyIdx !== -1) {
+          setEnemyTeam((prev) => {
+            const next = [...prev];
+            next[enemyIdx] = { ...next[enemyIdx], monsterId: monster.id };
+            return next;
+          });
+          if (!killOrder.includes(monster.id)) {
+            setKillOrder((prev) => [...prev, monster.id]);
+          }
+        }
+      }
+    });
+
+    if (names.length > 0) {
+      showToast(`⚡ Auto: Đã áp dụng gợi ý chọn ${names.join(' & ')}!`);
+    }
+  };
+
+  // Chọn Leader gợi ý theo lịch sử
+  const handleAcceptSuggestedLeader = (monsterId: string) => {
+    setMyTeam((prev) =>
+      prev.map((s) => ({
+        ...s,
+        isLeader: s.monsterId === monsterId,
+      }))
+    );
+    const mon = getMonsterById(allMonsters, monsterId);
+    showToast(`👑 Đã đặt ${mon?.name || monsterId} làm Leader!`);
+  };
+
+  // Chọn Cấm gợi ý theo lịch sử
+  const handleAcceptSuggestedBan = (monsterId: string) => {
+    setEnemyTeam((prev) =>
+      prev.map((s) => ({
+        ...s,
+        isBanned: s.monsterId === monsterId,
+      }))
+    );
+    const mon = getMonsterById(allMonsters, monsterId);
+    showToast(`🚫 Đã cấm ${mon?.name || monsterId} của Team Địch!`);
+  };
+
+  // Áp dụng cả gợi ý Leader và Cấm sau khi pick đủ 10 quái thú
+  const handleAcceptSuggestedLeadAndBan = () => {
+    if (autoSuggestions.suggestedLeaderMonsterId) {
+      handleAcceptSuggestedLeader(autoSuggestions.suggestedLeaderMonsterId);
+    }
+    if (autoSuggestions.suggestedBanMonsterId) {
+      handleAcceptSuggestedBan(autoSuggestions.suggestedBanMonsterId);
+    }
+    showToast('⚡ Auto: Đã áp dụng Leader & Cấm theo lịch sử!');
   };
 
   // Quick pick monster handler from suggestions panel
@@ -313,6 +518,16 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     ...enemyTeam.map((s) => s.monsterId),
   ].filter((id): id is string => Boolean(id));
 
+  // Danh sách thứ tự cần giết chỉ áp dụng cho pet địch KHÔNG BỊ CẤM (!isBanned)
+  const activeUnbannedKillOrder = useMemo(() => {
+    const unbannedEnemyMonIds = new Set(
+      enemyTeam
+        .filter((s) => !s.isBanned && s.monsterId)
+        .map((s) => s.monsterId as string)
+    );
+    return killOrder.filter((id) => unbannedEnemyMonIds.has(id));
+  }, [enemyTeam, killOrder]);
+
   // Helper to render an avatar slot with handlers
   const renderSlot = (
     side: 'mine' | 'enemy',
@@ -327,11 +542,37 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     const isSelected =
       selectedSlotRef?.side === side && selectedSlotRef?.index === index;
 
-    // Calculate kill priority if this is an enemy slot with a monster
+    // Calculate kill priority if this is an enemy slot with a monster (bỏ pet đã bị cấm)
     const killPriority =
-      side === 'enemy' && slot.monsterId && killOrder.includes(slot.monsterId)
-        ? killOrder.indexOf(slot.monsterId) + 1
+      side === 'enemy' &&
+      !slot.isBanned &&
+      slot.monsterId &&
+      activeUnbannedKillOrder.includes(slot.monsterId)
+        ? activeUnbannedKillOrder.indexOf(slot.monsterId) + 1
         : undefined;
+
+    // Gợi ý quái thú dạng mờ (Ghost suggestion) cho ô cờ này nếu đang trống
+    const ghostMonster = !slot.monsterId
+      ? autoSuggestions.suggestedMonstersByOrder[slot.pickOrder] || null
+      : null;
+
+    // Kiểm tra gợi ý Leader (Team Tôi) và Gợi ý Cấm (Team Địch)
+    const enemyPickedCount = enemyTeam.filter((s) => Boolean(s.monsterId)).length;
+    const myPickedCount = myTeam.filter((s) => Boolean(s.monsterId)).length;
+
+    const isSuggestedLeader =
+      Boolean(slot.monsterId) &&
+      side === 'mine' &&
+      isAutoSuggest &&
+      (autoSuggestions.stage === 'lead_and_ban' || myPickedCount >= 4) &&
+      slot.monsterId === autoSuggestions.suggestedLeaderMonsterId;
+
+    const isSuggestedBan =
+      Boolean(slot.monsterId) &&
+      side === 'enemy' &&
+      isAutoSuggest &&
+      (autoSuggestions.stage === 'lead_and_ban' || enemyPickedCount >= 3) &&
+      slot.monsterId === autoSuggestions.suggestedBanMonsterId;
 
     return (
       <div
@@ -353,6 +594,16 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
           killPriority={killPriority}
           showQuickControls={true}
           showTooltip={false}
+          ghostMonster={ghostMonster}
+          onAcceptGhost={() => handleAcceptSuggestedPick(slot.pickOrder)}
+          isSuggestedLeader={isSuggestedLeader}
+          isSuggestedBan={isSuggestedBan}
+          onAcceptSuggestedLeader={() => {
+            if (slot.monsterId) handleAcceptSuggestedLeader(slot.monsterId);
+          }}
+          onAcceptSuggestedBan={() => {
+            if (slot.monsterId) handleAcceptSuggestedBan(slot.monsterId);
+          }}
           onClick={
             monster
               ? undefined
@@ -394,40 +645,92 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
             onPickMonster={handleQuickPickMonster}
             onOpenAddMonster={onOpenAddMonster}
             onShowToast={showToast}
+            favoriteIds={favoriteIds}
+            onUpdateFavoriteIds={setFavoriteIds}
           />
         </div>
 
         {/* Center Column: Controls Bar + Battle Board + Quick Slot Toolbar */}
         <div className="lg:col-span-6 xl:col-span-6 order-1 lg:order-2 space-y-4 min-w-0">
-          {/* Sleek Minimalist Controls Bar (No redundant text) */}
+          {/* Sleek Minimalist Controls Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-lg">
-            {/* First Pick Toggle */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-400">1ST Pick:</span>
-              <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => applyFirstPickOrders('mine')}
-                  className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                    firstPickSide === 'mine'
-                      ? 'bg-blue-600 text-white shadow'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Team Trái (Tôi)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => applyFirstPickOrders('enemy')}
-                  className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                    firstPickSide === 'enemy'
-                      ? 'bg-blue-600 text-white shadow'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Team Phải (Địch)
-                </button>
+            {/* First Pick Toggle & Auto Mode Switch */}
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-400">1ST Pick:</span>
+                <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => applyFirstPickOrders('mine')}
+                    className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      firstPickSide === 'mine'
+                        ? 'bg-blue-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Team Trái (Tôi)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyFirstPickOrders('enemy')}
+                    className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      firstPickSide === 'enemy'
+                        ? 'bg-blue-600 text-white shadow'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Team Phải (Địch)
+                  </button>
+                </div>
               </div>
+
+              {/* Công tắc Bật/Tắt Chế Độ Auto Gợi Ý (Xanh lá = Bật, Đỏ = Tắt) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAutoSuggest((prev) => {
+                    const next = !prev;
+                    showToast(next ? '⚡ Đã BẬT Chế độ Auto Gợi ý (Màu Xanh)' : '🛑 Đã TẮT Chế độ Auto Gợi ý (Màu Đỏ)');
+                    return next;
+                  });
+                }}
+                className={`flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border transition-all cursor-pointer font-bold text-xs shadow-md select-none ${
+                  isAutoSuggest
+                    ? 'bg-emerald-950/80 border-emerald-500/80 text-emerald-300 ring-2 ring-emerald-500/30 hover:bg-emerald-900/90'
+                    : 'bg-rose-950/80 border-rose-500/80 text-rose-300 ring-2 ring-rose-500/30 hover:bg-rose-900/90'
+                }`}
+                title={
+                  isAutoSuggest
+                    ? 'Chế độ Auto Gợi ý đang BẬT (Màu Xanh Lá). Bấm để Tắt.'
+                    : 'Chế độ Auto Gợi ý đang TẮT (Màu Đỏ). Bấm để Bật.'
+                }
+              >
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      isAutoSuggest ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'
+                    }`}
+                  />
+                  <span className="font-extrabold tracking-wide uppercase text-[11px]">AUTO:</span>
+                </div>
+
+                {/* Switch Track (Màu Xanh khi bật, Màu Đỏ khi tắt) */}
+                <div
+                  className={`w-8 h-4.5 rounded-full p-0.5 transition-colors flex items-center shadow-inner ${
+                    isAutoSuggest ? 'bg-emerald-500 justify-end' : 'bg-rose-600 justify-start'
+                  }`}
+                >
+                  <div className="w-3.5 h-3.5 rounded-full bg-white shadow-sm" />
+                </div>
+
+                <span
+                  className={`text-[11px] font-black uppercase tracking-wider ${
+                    isAutoSuggest ? 'text-emerald-300' : 'text-rose-300'
+                  }`}
+                >
+                  {isAutoSuggest ? 'Bật' : 'Tắt'}
+                </span>
+              </button>
             </div>
 
             {/* Action Buttons */}
@@ -451,6 +754,48 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Auto Suggestions Smart Banner - Hiển thị hướng dẫn và nút thao tác nhanh trong giai đoạn chọn quái (giai đoạn lead_and_ban đã có nút trực tiếp trên từng avatar nên ẩn banner để giao diện gọn gàng) */}
+          {isAutoSuggest && autoSuggestions.isActive && autoSuggestions.stage === 'pick_step' && (
+            <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 sm:px-4 py-2.5 rounded-2xl border shadow-lg backdrop-blur-md transition-all animate-in fade-in bg-gradient-to-r from-emerald-950/80 via-slate-900/90 to-slate-900/90 border-emerald-500/50">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="flex h-2.5 w-2.5 relative shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <div className="min-w-0">
+                  <div className="text-xs font-black tracking-wide flex items-center gap-1.5 flex-wrap">
+                    <span className="text-emerald-400 uppercase">
+                      ⚡ AUTO GỢI Ý:
+                    </span>
+                    <span className="text-slate-200 font-medium">
+                      {autoSuggestions.stepDescription}
+                    </span>
+                  </div>
+                  {autoSuggestions.sourceMatchInfo && (
+                    <div className="text-[11px] text-slate-300 font-normal mt-0.5 flex items-center gap-1">
+                      <span className="text-emerald-400 font-bold">✦</span>
+                      <span className="truncate">{autoSuggestions.sourceMatchInfo}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action button inside banner */}
+              <div className="flex items-center gap-2 shrink-0">
+                {autoSuggestions.targetPickOrders.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleAcceptAllCurrentSuggestions}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 transition-all cursor-pointer active:scale-95"
+                  >
+                    <span>Áp dụng gợi ý</span>
+                    <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* THE MAIN BATTLE BOARD - EXACT LAYOUT FROM USER'S IMAGE */}
           <div className="bg-[#141b2d] border border-slate-800/90 rounded-2xl sm:rounded-3xl p-3 sm:p-5 md:p-6 shadow-2xl overflow-x-auto">
