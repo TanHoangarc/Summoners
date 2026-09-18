@@ -14,6 +14,10 @@ import {
   Award,
   BookmarkCheck,
   Check,
+  Pencil,
+  Trash2,
+  Star,
+  Loader2,
 } from 'lucide-react';
 import { Monster, SiegeCounterStrategy, SavedSiegeDefense } from '../../types';
 import { DEFAULT_SIEGE_COUNTERS } from '../../data/defaultCounters';
@@ -21,7 +25,9 @@ import { getMonsterById, generateDynamicCounters } from '../../utils/monsterHelp
 import { MonsterAvatar } from '../common/MonsterAvatar';
 import { MonsterPickerModal } from '../common/MonsterPickerModal';
 import { SaveDefenseModal } from './SaveDefenseModal';
+import { SaveCounterModal } from './SaveCounterModal';
 import { SavedDefensesList } from './SavedDefensesList';
+import { fetchAICounterStrategy } from '../../lib/aiStrategyService';
 import {
   subscribeToSiegeDefenses,
   saveSiegeDefenseToFirestore,
@@ -30,6 +36,13 @@ import {
   STORAGE_KEY_SIEGE_DEFENSES,
   seedDefaultDefensesToFirestore,
 } from '../../lib/siegeDefenseService';
+import {
+  subscribeToSiegeCounters,
+  saveSiegeCounterToFirestore,
+  deleteSiegeCounterFromFirestore,
+  STORAGE_KEY_SIEGE_COUNTERS,
+  seedDefaultCountersToFirestore,
+} from '../../lib/siegeCounterService';
 
 interface SiegeViewProps {
   allMonsters: Monster[];
@@ -100,8 +113,52 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
     return () => clearTimeout(timer);
   }, [toastMessage]);
 
-  // Saved / user contributed counters
-  const [countersDatabase, setCountersDatabase] = useState<SiegeCounterStrategy[]>(DEFAULT_SIEGE_COUNTERS);
+  // Saved / user contributed counters with localStorage fallback
+  const [countersDatabase, setCountersDatabase] = useState<SiegeCounterStrategy[]>(() => {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY_SIEGE_COUNTERS);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_SIEGE_COUNTERS;
+  });
+
+  // Modal for saving or editing counter
+  const [isSaveCounterModalOpen, setIsSaveCounterModalOpen] = useState(false);
+  const [editingCounter, setEditingCounter] = useState<SiegeCounterStrategy | null>(null);
+  const [aiLoadingCounterId, setAiLoadingCounterId] = useState<string | null>(null);
+
+  // Realtime subscription to Firestore counters collection
+  useEffect(() => {
+    const unsubscribe = subscribeToSiegeCounters(
+      (firestoreCounters) => {
+        if (firestoreCounters.length > 0) {
+          setCountersDatabase(firestoreCounters);
+          try {
+            localStorage.setItem(STORAGE_KEY_SIEGE_COUNTERS, JSON.stringify(firestoreCounters));
+          } catch {}
+        } else {
+          // If Firestore counters collection is empty initially, seed defaults so they exist in cloud
+          seedDefaultCountersToFirestore().catch(console.warn);
+        }
+      },
+      (err) => {
+        console.warn('Siege counters sync notice:', err);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // Save to localStorage whenever countersDatabase changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_SIEGE_COUNTERS, JSON.stringify(countersDatabase));
+    } catch {}
+  }, [countersDatabase]);
 
   // Active slot being picked for defense (0, 1, or 2)
   const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
@@ -110,18 +167,6 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
   const [expandedStrategyIds, setExpandedStrategyIds] = useState<Record<string, boolean>>({
     'counter-g-o-t-1': true, // default first one expanded
   });
-
-  // Contribute counter modal state
-  const [isContributeModalOpen, setIsContributeModalOpen] = useState(false);
-  const [contribSlots, setContribSlots] = useState<[string | null, string | null, string | null]>([
-    null,
-    null,
-    null,
-  ]);
-  const [contribPickingIndex, setContribPickingIndex] = useState<number | null>(null);
-  const [contribAuthor, setContribAuthor] = useState('Người chơi SW');
-  const [contribTurnOrder, setContribTurnOrder] = useState('');
-  const [contribStrategy, setContribStrategy] = useState('');
 
   // Selected defense monsters
   const defMonsters = defenseIds.map((id) => getMonsterById(allMonsters, id));
@@ -189,13 +234,112 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
     }
   };
 
+  // Open modal to add a new counter for current defense
+  const handleOpenAddCounter = () => {
+    if (!canSaveCurrent) {
+      setToastMessage('Vui lòng chọn đủ 3 quái thú Defense trước khi thêm Counter!');
+      return;
+    }
+    setEditingCounter(null);
+    setIsSaveCounterModalOpen(true);
+  };
+
+  // Open modal to edit an existing counter
+  const handleEditCounter = (counter: SiegeCounterStrategy) => {
+    setEditingCounter(counter);
+    setIsSaveCounterModalOpen(true);
+  };
+
+  // Save / Update counter (Optimistic + Firestore + LocalStorage)
+  const handleSaveCounter = async (counter: SiegeCounterStrategy) => {
+    setCountersDatabase((prev) => {
+      const index = prev.findIndex((c) => c.id === counter.id);
+      if (index >= 0) {
+        const next = [...prev];
+        next[index] = counter;
+        return next;
+      }
+      return [counter, ...prev];
+    });
+
+    setExpandedStrategyIds((prev) => ({ ...prev, [counter.id]: true }));
+    setToastMessage('Đã lưu đội hình counter thành công!');
+
+    try {
+      await saveSiegeCounterToFirestore(counter);
+    } catch (err) {
+      console.warn('Error saving counter to Firestore:', err);
+    }
+  };
+
+  // Quick AI Strategy generation directly from counter card
+  const handleAIGenerateForCounter = async (counter: SiegeCounterStrategy) => {
+    const validDefMonsters = defMonsters.filter(Boolean) as Monster[];
+    const validCMonsters = counter.counterMonsterIds
+      .map((id) => getMonsterById(allMonsters, id))
+      .filter(Boolean) as Monster[];
+
+    if (validDefMonsters.length < 3 || validCMonsters.length < 3) {
+      setToastMessage('Cần đủ 3 quái thú Defense và 3 quái thú Counter để AI phân tích!');
+      return;
+    }
+
+    setAiLoadingCounterId(counter.id);
+    setToastMessage('AI đang phân tích và tạo chiến thuật khắc chế chi tiết...');
+
+    try {
+      const result = await fetchAICounterStrategy(validDefMonsters, validCMonsters);
+      const updated: SiegeCounterStrategy = {
+        ...counter,
+        turnOrder: result.turnOrder || counter.turnOrder,
+        difficulty: result.difficulty || counter.difficulty,
+        strategy: result.strategy || counter.strategy,
+        isCustom: true,
+        updatedAt: new Date().toISOString(),
+      };
+
+      await handleSaveCounter(updated);
+      setToastMessage('✨ Đã tải thành công chiến thuật mới từ AI!');
+    } catch (err: any) {
+      setToastMessage(err?.message || 'Lỗi khi gọi AI gợi ý chiến thuật.');
+    } finally {
+      setAiLoadingCounterId(null);
+    }
+  };
+
+  // Delete counter
+  const handleDeleteCounter = async (counterId: string) => {
+    if (!confirm('Bạn có chắc chắn muốn xóa đội hình counter này không?')) return;
+
+    setCountersDatabase((prev) => prev.filter((c) => c.id !== counterId));
+    setToastMessage('Đã xóa đội hình counter!');
+
+    try {
+      await deleteSiegeCounterFromFirestore(counterId);
+    } catch (err) {
+      console.warn('Error deleting counter from Firestore:', err);
+    }
+  };
+
+  // Restore default counters
+  const handleRestoreDefaultCounters = async () => {
+    if (!confirm('Khôi phục toàn bộ danh sách counter mẫu về mặc định?')) return;
+    setCountersDatabase(DEFAULT_SIEGE_COUNTERS);
+    setToastMessage('Đã khôi phục các đội hình counter mặc định!');
+    try {
+      await seedDefaultCountersToFirestore();
+    } catch (err) {
+      console.warn('Error seeding default counters:', err);
+    }
+  };
+
   // Match existing counters in database
-  const matchingCounters = useMemo(() => {
+  const { exactMatches, dynamicSuggestions } = useMemo(() => {
     const validDefIds = defenseIds.filter((id): id is string => Boolean(id));
-    if (validDefIds.length < 3) return [];
+    if (validDefIds.length < 3) return { exactMatches: [], dynamicSuggestions: [] };
 
     // Find in countersDatabase
-    const exactMatches = countersDatabase.filter((c) => {
+    const matched = countersDatabase.filter((c) => {
       return (
         c.defenseMonsterIds.includes(validDefIds[0]) &&
         c.defenseMonsterIds.includes(validDefIds[1]) &&
@@ -203,52 +347,36 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
       );
     });
 
-    if (exactMatches.length > 0) {
-      return exactMatches;
-    }
+    const suggestions = generateDynamicCounters(validDefIds, allMonsters);
 
-    // Generate dynamic algorithmic counters if no exact match
-    return generateDynamicCounters(validDefIds, allMonsters);
+    return {
+      exactMatches: matched,
+      dynamicSuggestions: suggestions,
+    };
   }, [defenseIds, countersDatabase, allMonsters]);
 
   const toggleExpand = (id: string) => {
     setExpandedStrategyIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleRateCounter = (id: string) => {
-    setCountersDatabase((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ratingCount: c.ratingCount + 1 } : c))
-    );
-  };
-
-  const handleContributeSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!contribSlots[0] || !contribSlots[1] || !contribSlots[2]) {
-      alert('Vui lòng chọn đủ 3 pet counter!');
-      return;
-    }
-    if (!defenseIds[0] || !defenseIds[1] || !defenseIds[2]) {
-      alert('Đội hình phòng thủ chưa đủ 3 pet!');
-      return;
-    }
-
-    const newCounter: SiegeCounterStrategy = {
-      id: `custom-counter-${Date.now()}`,
-      defenseMonsterIds: [defenseIds[0], defenseIds[1], defenseIds[2]],
-      counterMonsterIds: [contribSlots[0], contribSlots[1], contribSlots[2]],
-      rating: 5.0,
-      ratingCount: 1,
-      author: contribAuthor.trim() || 'Người chơi SW',
-      date: new Date().toLocaleDateString('en-US'),
-      turnOrder: contribTurnOrder.trim() || undefined,
-      strategy: contribStrategy.trim() || 'Tập trung dồn sát thương mục tiêu chủ lực, duy trì khiên và miễn nhiễm.',
+  const handleRateCounter = async (id: string) => {
+    const target = countersDatabase.find((c) => c.id === id);
+    if (!target) return;
+    const updated: SiegeCounterStrategy = {
+      ...target,
+      ratingCount: (target.ratingCount || 1) + 1,
     };
 
-    setCountersDatabase([newCounter, ...countersDatabase]);
-    setIsContributeModalOpen(false);
-    setContribSlots([null, null, null]);
-    setContribTurnOrder('');
-    setContribStrategy('');
+    setCountersDatabase((prev) =>
+      prev.map((c) => (c.id === id ? updated : c))
+    );
+    setToastMessage('Đã tăng lượt đánh giá cho counter này!');
+
+    try {
+      await saveSiegeCounterToFirestore(updated);
+    } catch (err) {
+      console.warn('Error updating rating:', err);
+    }
   };
 
   return (
@@ -347,39 +475,79 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
         onRestoreDefaults={handleRestoreDefaults}
       />
 
-      {/* COUNTERS SECTION (Matches Screenshot 2 list of counters) */}
+      {/* COUNTERS SECTION (Saved & Editable Counter Formations) */}
       <div className="space-y-4">
         {/* Counters Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <h3 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
-              <span className="text-teal-400">{matchingCounters.length}</span> GỢI Ý COUNTERS
+              <Swords className="w-5 h-5 text-teal-400" />
+              <span>
+                <span className="text-teal-400">
+                  {exactMatches.length > 0 ? exactMatches.length : dynamicSuggestions.length}
+                </span>{' '}
+                {exactMatches.length > 0 ? 'ĐỘI HÌNH COUNTER ĐÃ LƯU' : 'GỢI Ý COUNTERS'}
+              </span>
             </h3>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsContributeModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl text-xs shadow-md transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            Contribute (Đóng góp Counter)
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleOpenAddCounter}
+              className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold rounded-xl text-xs shadow-md transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Thêm Counter Mới</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleRestoreDefaultCounters}
+              title="Khôi phục các counter mẫu mặc định của hệ thống"
+              className="flex items-center gap-1 px-3 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-xl text-xs transition-colors cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Khôi phục mẫu</span>
+            </button>
+          </div>
         </div>
 
+        {/* Notice when viewing dynamic counters */}
+        {exactMatches.length === 0 && (
+          <div className="p-4 bg-slate-900/90 border border-teal-500/30 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+            <div className="space-y-0.5">
+              <h4 className="text-xs font-bold text-teal-300 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-teal-400 shrink-0" />
+                Chưa có counter tùy chỉnh được lưu cho đội hình này
+              </h4>
+              <p className="text-xs text-slate-400">
+                Dưới đây là các gợi ý khắc chế từ hệ thống. Bạn có thể bấm <strong className="text-teal-300">"Chỉnh sửa & Lưu"</strong> hoặc bấm <strong className="text-teal-300">"Thêm Counter Mới"</strong> để lưu lại.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleOpenAddCounter}
+              className="px-3.5 py-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs rounded-xl shadow shrink-0 cursor-pointer self-start sm:self-auto"
+            >
+              + Tạo Counter Mới
+            </button>
+          </div>
+        )}
+
         {/* Counter Cards List */}
-        {matchingCounters.length === 0 ? (
+        {exactMatches.length === 0 && dynamicSuggestions.length === 0 ? (
           <div className="text-center py-16 bg-slate-900/60 border border-slate-800 rounded-3xl space-y-3">
             <p className="text-base font-bold text-slate-300">
               Chưa có dữ liệu counter cho bộ ba này
             </p>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Vui lòng chọn đủ 3 quái vật ở phần DEFENSE phía trên hoặc bấm "Contribute" để đóng góp bộ 3 counter đầu tiên!
+              Vui lòng chọn đủ 3 quái vật ở phần DEFENSE phía trên hoặc bấm "Thêm Counter Mới" để tạo đội hình khắc chế đầu tiên!
             </p>
           </div>
         ) : (
           <div className="space-y-3.5">
-            {matchingCounters.map((counter) => {
+            {/* 1. Exact Saved Matches */}
+            {exactMatches.map((counter) => {
               const cMonsters = counter.counterMonsterIds.map((id) => getMonsterById(allMonsters, id));
               const isExpanded = Boolean(expandedStrategyIds[counter.id]);
 
@@ -404,57 +572,242 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
                         ))}
                       </div>
 
-                      <div>
+                      <div className="space-y-1">
                         <h4 className="text-sm font-bold text-white leading-tight">
                           {cMonsters.map((m) => m?.name || 'Unknown').join(' ')}
                         </h4>
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                          {counter.isCustom && (
+                            <span className="px-2 py-0.5 rounded bg-teal-500/20 text-teal-300 border border-teal-500/30 font-bold">
+                              Đã lưu
+                            </span>
+                          )}
+                          {counter.difficulty && (
+                            <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700 font-medium">
+                              Độ khó: {counter.difficulty}
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1 text-amber-400 font-medium">
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            {counter.rating?.toFixed(1) || '5.0'} ({counter.ratingCount || 1})
+                          </span>
+                          {counter.author && (
+                            <span className="text-slate-400">
+                              Tác giả: <strong className="text-slate-300">{counter.author}</strong>
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-3 self-end sm:self-auto">
+                    {/* Actions: Edit, Delete, Details */}
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => handleEditCounter(counter)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-teal-300 hover:text-teal-200 rounded-xl text-xs font-bold transition-all border border-slate-700/80 hover:border-teal-500/40 cursor-pointer shadow-sm"
+                        title="Chỉnh sửa đội hình counter này"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span>Chỉnh sửa</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCounter(counter.id)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800/80 hover:bg-rose-950/50 text-slate-400 hover:text-rose-300 rounded-xl text-xs font-medium transition-all border border-slate-750 hover:border-rose-800/60 cursor-pointer"
+                        title="Xóa counter này"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="hidden md:inline">Xóa</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => toggleExpand(counter.id)}
                         className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium transition-colors cursor-pointer"
                       >
-                        <span>Chi tiết Chiến thuật</span>
+                        <span>Chi tiết</span>
                         {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </button>
                     </div>
                   </div>
 
-                  {/* Expanded Strategy Body (Matches Screenshot 2 "View Details - 1 Strategy") */}
+                  {/* Expanded Strategy Body */}
                   {isExpanded && (
                     <div className="pt-3 border-t border-slate-800/80 bg-slate-950/40 -mx-5 -mb-5 p-5 rounded-b-2xl space-y-3 animate-in fade-in duration-150 text-xs">
                       {counter.turnOrder && (
                         <div className="flex items-center gap-2 text-teal-300 font-semibold">
-                          <Zap className="w-4 h-4 text-teal-400" />
+                          <Zap className="w-4 h-4 text-teal-400 shrink-0" />
                           <span>Thứ tự lượt đi (Turn Order):</span>
-                          <span className="px-2 py-0.5 rounded bg-teal-950 border border-teal-800/80 text-teal-200">
+                          <span className="px-2.5 py-0.5 rounded bg-teal-950 border border-teal-800/80 text-teal-200 font-mono">
                             {counter.turnOrder}
                           </span>
                         </div>
                       )}
 
-                      <div className="space-y-1">
-                        <strong className="text-slate-300 block font-semibold">Hướng dẫn cách đánh & Khắc chế:</strong>
-                        <p className="text-slate-400 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <strong className="text-slate-300 block font-semibold">
+                            Hướng dẫn cách đánh & Khắc chế:
+                          </strong>
+                          <button
+                            type="button"
+                            onClick={() => handleAIGenerateForCounter(counter)}
+                            disabled={aiLoadingCounterId === counter.id}
+                            className="flex items-center gap-1.5 px-2.5 py-1 bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 rounded-lg text-[11px] font-bold transition-all border border-teal-500/30 cursor-pointer disabled:opacity-60"
+                            title="Tải chiến thuật và thứ tự đi phân tích bởi Gemini AI"
+                          >
+                            {aiLoadingCounterId === counter.id ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin text-teal-400" />
+                                <span>AI đang phân tích...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-3 h-3 text-teal-400" />
+                                <span>AI gợi ý lại chiến thuật</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <p className="text-slate-400 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800 whitespace-pre-line">
                           {counter.strategy}
                         </p>
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                        <span>Độ khó thực thi: <strong className="text-amber-300">{counter.difficulty || 'Trung bình'}</strong></span>
-                        <span className="flex items-center gap-1 text-emerald-400">
-                          <CheckCircle className="w-3.5 h-3.5" /> Đã kiểm chứng tỉ lệ thắng cao trong Siege War
-                        </span>
+                      <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-500 pt-1">
+                        <div className="flex items-center gap-3">
+                          <span>Độ khó: <strong className="text-amber-300">{counter.difficulty || 'Trung bình'}</strong></span>
+                          <span className="flex items-center gap-1 text-emerald-400">
+                            <CheckCircle className="w-3.5 h-3.5" /> Đã kiểm chứng tỉ lệ thắng cao
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRateCounter(counter.id)}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-teal-300 hover:text-teal-200 border border-teal-500/30 rounded-lg font-medium transition-colors cursor-pointer"
+                        >
+                          <ThumbsUp className="w-3 h-3" />
+                          <span>Hữu ích ({counter.ratingCount || 1})</span>
+                        </button>
                       </div>
                     </div>
                   )}
                 </div>
               );
             })}
+
+            {/* 2. Dynamic Suggestions (When no exact match or expandable for more ideas) */}
+            {exactMatches.length === 0 &&
+              dynamicSuggestions.map((counter) => {
+                const cMonsters = counter.counterMonsterIds.map((id) => getMonsterById(allMonsters, id));
+                const isExpanded = Boolean(expandedStrategyIds[counter.id]);
+
+                return (
+                  <div
+                    key={counter.id}
+                    className="bg-slate-900/90 border border-slate-800 hover:border-teal-500/40 rounded-2xl p-5 shadow-xl transition-all space-y-3"
+                  >
+                    {/* Counter Header Row */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      {/* 3 Counter Pets + Names */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          {cMonsters.map((monster, i) => (
+                            <MonsterAvatar
+                              key={i}
+                              monster={monster}
+                              size="md"
+                              showStars={false}
+                              showName={false}
+                            />
+                          ))}
+                        </div>
+
+                        <div className="space-y-1">
+                          <h4 className="text-sm font-bold text-white leading-tight">
+                            {cMonsters.map((m) => m?.name || 'Unknown').join(' ')}
+                          </h4>
+                          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                            <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold">
+                              Gợi ý hệ thống
+                            </span>
+                            <span>Độ khó: <strong className="text-amber-300">{counter.difficulty || 'Trung bình'}</strong></span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions: Save & Edit, Details */}
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => handleEditCounter(counter)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 rounded-xl text-xs font-bold transition-all cursor-pointer shadow"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          <span>Chỉnh sửa & Lưu</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => toggleExpand(counter.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium transition-colors cursor-pointer"
+                        >
+                          <span>Chi tiết</span>
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Expanded Strategy Body */}
+                    {isExpanded && (
+                      <div className="pt-3 border-t border-slate-800/80 bg-slate-950/40 -mx-5 -mb-5 p-5 rounded-b-2xl space-y-3 animate-in fade-in duration-150 text-xs">
+                        {counter.turnOrder && (
+                          <div className="flex items-center gap-2 text-teal-300 font-semibold">
+                            <Zap className="w-4 h-4 text-teal-400 shrink-0" />
+                            <span>Thứ tự lượt đi (Turn Order):</span>
+                            <span className="px-2.5 py-0.5 rounded bg-teal-950 border border-teal-800/80 text-teal-200 font-mono">
+                              {counter.turnOrder}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="space-y-1.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <strong className="text-slate-300 block font-semibold">
+                              Hướng dẫn cách đánh & Khắc chế:
+                            </strong>
+                            <button
+                              type="button"
+                              onClick={() => handleAIGenerateForCounter(counter)}
+                              disabled={aiLoadingCounterId === counter.id}
+                              className="flex items-center gap-1.5 px-2.5 py-1 bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 rounded-lg text-[11px] font-bold transition-all border border-teal-500/30 cursor-pointer disabled:opacity-60"
+                              title="Tải chiến thuật và thứ tự đi phân tích bởi Gemini AI"
+                            >
+                              {aiLoadingCounterId === counter.id ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 animate-spin text-teal-400" />
+                                  <span>AI đang phân tích...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles className="w-3 h-3 text-teal-400" />
+                                  <span>AI phân tích chi tiết</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          <p className="text-slate-400 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800 whitespace-pre-line">
+                            {counter.strategy}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         )}
       </div>
@@ -478,134 +831,21 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
         />
       )}
 
-      {/* Contribute Counter Modal */}
-      {isContributeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-xl bg-slate-900 border border-slate-700 rounded-3xl p-6 shadow-2xl space-y-5 text-slate-100 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div>
-                <h3 className="text-lg font-bold text-white">Đóng Góp Đội Hình Counter Mới</h3>
-                <p className="text-xs text-slate-400">
-                  Chia sẻ 3 pet khắc chế kèm hướng dẫn chi tiết cho cộng đồng
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsContributeModalOpen(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
+      {/* Save / Edit Counter Modal */}
+      <SaveCounterModal
+        isOpen={isSaveCounterModalOpen}
+        onClose={() => {
+          setIsSaveCounterModalOpen(false);
+          setEditingCounter(null);
+        }}
+        defenseIds={defenseIds}
+        allMonsters={allMonsters}
+        onSave={handleSaveCounter}
+        editingCounter={editingCounter}
+        onOpenAddMonster={onOpenAddMonster}
+      />
 
-            <form onSubmit={handleContributeSubmit} className="space-y-4">
-              {/* Pick 3 Counter Pets */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2">
-                  Chọn 3 Pet Đội Hình Counter Của Bạn:
-                </label>
-                <div className="flex items-center justify-center gap-4 p-4 bg-slate-950/60 rounded-2xl border border-slate-800">
-                  {contribSlots.map((id, idx) => {
-                    const monster = getMonsterById(allMonsters, id);
-                    return (
-                      <div key={idx} className="flex flex-col items-center">
-                        <MonsterAvatar
-                          monster={monster}
-                          size="lg"
-                          showStars={true}
-                          showName={true}
-                          onClick={() => setContribPickingIndex(idx)}
-                          emptyLabel={`Pet ${idx + 1}`}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Author & Turn Order */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Tên tác giả:
-                  </label>
-                  <input
-                    type="text"
-                    value={contribAuthor}
-                    onChange={(e) => setContribAuthor(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-teal-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Thứ tự lượt đi (Turn Order):
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Vd: Buff > Giảm giáp > Dồn dame"
-                    value={contribTurnOrder}
-                    onChange={(e) => setContribTurnOrder(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-teal-400"
-                  />
-                </div>
-              </div>
-
-              {/* Detailed Strategy */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Mô tả chiến thuật & lưu ý rune:
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="Vd: Quái A xóa buff trước, quái B tank đòn hiểm, quái C xuyên giáp kết liễu..."
-                  value={contribStrategy}
-                  onChange={(e) => setContribStrategy(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-slate-100 focus:outline-none focus:border-teal-400"
-                />
-              </div>
-
-              {/* Submit Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsContributeModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-xl"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs rounded-xl shadow-md"
-                >
-                  Lưu Gợi Ý Counter
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Sub-picker inside Contribute Modal */}
-      {contribPickingIndex !== null && (
-        <MonsterPickerModal
-          isOpen={contribPickingIndex !== null}
-          onClose={() => setContribPickingIndex(null)}
-          onSelectMonster={(monsterId) => {
-            setContribSlots((prev) => {
-              const next = [...prev] as [string | null, string | null, string | null];
-              next[contribPickingIndex] = monsterId;
-              return next;
-            });
-          }}
-          allMonsters={allMonsters}
-          currentMonsterId={contribSlots[contribPickingIndex]}
-          title={`Chọn Pet Counter ${contribPickingIndex + 1}`}
-          onOpenAddModal={onOpenAddMonster}
-        />
-      )}
-      {/* Save Defense Modal */}
+      {/* Save / Edit Defense Modal */}
       <SaveDefenseModal
         isOpen={isSaveDefenseModalOpen}
         onClose={() => {

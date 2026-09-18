@@ -36,6 +36,32 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "name", "monsterIds", "createdAt"]
+    },
+    "counters": {
+      "title": "Đội hình Counter Siege (Siege Counters)",
+      "description": "Danh sách các đội hình khắc chế (counters) cho đội hình phòng thủ Siege được lưu trữ và tùy chỉnh trên Firestore",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "defenseMonsterIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "counterMonsterIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "rating": { "type": "number" },
+        "ratingCount": { "type": "number" },
+        "author": { "type": "string" },
+        "date": { "type": "string" },
+        "strategy": { "type": "string" },
+        "turnOrder": { "type": "string" },
+        "difficulty": { "type": "string" },
+        "isCustom": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "defenseMonsterIds", "counterMonsterIds", "strategy"]
     }
   }
 }

@@ -16,6 +16,8 @@ import { Monster, RTAMatchRecord, RTASlot } from '../../types';
 import { getMonsterById } from '../../utils/monsterHelpers';
 import { MonsterAvatar } from '../common/MonsterAvatar';
 import { MonsterPickerModal } from '../common/MonsterPickerModal';
+import { QuickPickSuggestions } from './QuickPickSuggestions';
+import { KillOrderPanel } from './KillOrderPanel';
 
 interface RTADraftViewProps {
   allMonsters: Monster[];
@@ -60,22 +62,18 @@ const getStoredHistory = (): RTAMatchRecord[] => {
   return DEFAULT_SAMPLE_HISTORY;
 };
 
-// Initial teams matching the user's reference image
-const INITIAL_MY_TEAM: RTASlot[] = [
-  { monsterId: 'moore', isBanned: false, isLeader: false, pickOrder: 1 },
-  { monsterId: 'shizuka', isBanned: false, isLeader: false, pickOrder: 4 },
-  { monsterId: 'karnal', isBanned: false, isLeader: false, pickOrder: 5 },
-  { monsterId: 'savannah', isBanned: false, isLeader: true, pickOrder: 8 },
-  { monsterId: 'tractor', isBanned: true, isLeader: false, pickOrder: 9 },
-];
+// RTA mặc định để trống hoàn toàn, không thêm pet sẵn theo yêu cầu người dùng
+const createEmptyRTATeam = (orders: number[]): RTASlot[] => {
+  return orders.map((order) => ({
+    monsterId: null,
+    isBanned: false,
+    isLeader: false,
+    pickOrder: order,
+  }));
+};
 
-const INITIAL_ENEMY_TEAM: RTASlot[] = [
-  { monsterId: 'oliver', isBanned: true, isLeader: false, pickOrder: 2 },
-  { monsterId: 'seara', isBanned: false, isLeader: false, pickOrder: 3 },
-  { monsterId: 'woosa', isBanned: false, isLeader: false, pickOrder: 6 },
-  { monsterId: 'miles', isBanned: false, isLeader: false, pickOrder: 7 },
-  { monsterId: 'dominic', isBanned: false, isLeader: true, pickOrder: 10 },
-];
+const INITIAL_MY_TEAM: RTASlot[] = createEmptyRTATeam([1, 4, 5, 8, 9]);
+const INITIAL_ENEMY_TEAM: RTASlot[] = createEmptyRTATeam([2, 3, 6, 7, 10]);
 
 export const RTADraftView: React.FC<RTADraftViewProps> = ({
   allMonsters,
@@ -96,6 +94,9 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     side: 'mine' | 'enemy';
     index: number;
   } | null>(null);
+
+  // Kill order for enemy team (array of enemy monster IDs in priority order 1st -> 5th)
+  const [killOrder, setKillOrder] = useState<string[]>([]);
 
   // Match History records with persistent local storage
   const [matchHistory, setMatchHistory] = useState<RTAMatchRecord[]>(getStoredHistory);
@@ -136,7 +137,36 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     }
   };
 
-  // Handle monster selection
+  // Quick pick monster handler from suggestions panel
+  const handleQuickPickMonster = (monsterId: string) => {
+    // If user has actively selected a slot in Team Tôi
+    if (selectedSlotRef && selectedSlotRef.side === 'mine') {
+      const idx = selectedSlotRef.index;
+      setMyTeam((prev) => {
+        const next = [...prev];
+        next[idx] = { ...next[idx], monsterId };
+        return next;
+      });
+      showToast(`Đã chọn vào vị trí #${myTeam[idx].pickOrder}`);
+      return;
+    }
+
+    // Otherwise, pick into the first empty slot in myTeam
+    const emptyIndex = myTeam.findIndex((s) => !s.monsterId);
+    if (emptyIndex !== -1) {
+      setMyTeam((prev) => {
+        const next = [...prev];
+        next[emptyIndex] = { ...next[emptyIndex], monsterId };
+        return next;
+      });
+      showToast(`Đã chọn vào vị trí #${myTeam[emptyIndex].pickOrder}`);
+      return;
+    }
+
+    showToast('Team Tôi đã đủ 5 quái thú. Hãy nhấp chọn 1 vị trí trên bàn cờ để thay thế!');
+  };
+
+  // Handle monster selection from picker modal
   const handleSelectMonster = (monsterId: string | null) => {
     if (!activePickerSlot) return;
     const { side, index } = activePickerSlot;
@@ -153,6 +183,9 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
         next[index] = { ...next[index], monsterId };
         return next;
       });
+      if (monsterId && !killOrder.includes(monsterId)) {
+        setKillOrder((prev) => [...prev, monsterId]);
+      }
     }
   };
 
@@ -207,11 +240,15 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
         return next;
       });
     } else {
+      const removedId = enemyTeam[index]?.monsterId;
       setEnemyTeam((prev) => {
         const next = [...prev];
         next[index] = { ...next[index], monsterId: null, isBanned: false, isLeader: false };
         return next;
       });
+      if (removedId) {
+        setKillOrder((prev) => prev.filter((id) => id !== removedId));
+      }
     }
   };
 
@@ -224,6 +261,8 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
       prev.map((s) => ({ ...s, monsterId: null, isBanned: false, isLeader: false }))
     );
     setSelectedSlotRef(null);
+    setKillOrder([]);
+    showToast('Đã làm mới toàn bộ bàn cờ RTA');
   };
 
   // Lưu trực tiếp đội hình 5v5 từ bàn cờ ở trên vào lịch sử đấu (mặc định Victory)
@@ -261,6 +300,10 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     setEnemyTeam([...record.enemyTeam]);
     const isMyFirst = record.myTeam.some((s) => s.pickOrder === 1);
     setFirstPickSide(isMyFirst ? 'mine' : 'enemy');
+    const enemyMonIds = record.enemyTeam
+      .map((s) => s.monsterId)
+      .filter((id): id is string => Boolean(id));
+    setKillOrder(enemyMonIds);
     showToast('Đã nạp đội hình trận đấu lên bàn cờ!');
   };
 
@@ -284,6 +327,12 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     const isSelected =
       selectedSlotRef?.side === side && selectedSlotRef?.index === index;
 
+    // Calculate kill priority if this is an enemy slot with a monster
+    const killPriority =
+      side === 'enemy' && slot.monsterId && killOrder.includes(slot.monsterId)
+        ? killOrder.indexOf(slot.monsterId) + 1
+        : undefined;
+
     return (
       <div
         key={`${side}-${index}`}
@@ -301,9 +350,15 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
           pickOrder={slot.pickOrder}
           isLeader={slot.isLeader}
           isBanned={slot.isBanned}
+          killPriority={killPriority}
           showQuickControls={true}
           showTooltip={false}
-          onClick={() => setActivePickerSlot({ side, index })}
+          onClick={
+            monster
+              ? undefined
+              : () => setActivePickerSlot({ side, index })
+          }
+          onClear={() => clearSlot(side, index)}
           onToggleBan={() => toggleBan(side, index)}
           onToggleLeader={() => toggleLeader(side, index)}
           emptyLabel={`#${slot.pickOrder}`}
@@ -327,217 +382,247 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Sleek Minimalist Controls Bar (No redundant text) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-lg">
-        {/* First Pick Toggle */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-400">1ST Pick:</span>
-          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
-            <button
-              type="button"
-              onClick={() => applyFirstPickOrders('mine')}
-              className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                firstPickSide === 'mine'
-                  ? 'bg-blue-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Team Trái (Tôi)
-            </button>
-            <button
-              type="button"
-              onClick={() => applyFirstPickOrders('enemy')}
-              className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                firstPickSide === 'enemy'
-                  ? 'bg-blue-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Team Phải (Địch)
-            </button>
-          </div>
+      {/* 3-Column Layout: Left Quick Picks + Center Battle Board + Right Kill Order */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 xl:gap-5 items-start">
+        {/* Left Column: Pet Tôi Hay Pick (Desktop Left empty space) */}
+        <div className="lg:col-span-3 xl:col-span-3 order-2 lg:order-1">
+          <QuickPickSuggestions
+            allMonsters={allMonsters}
+            myTeam={myTeam}
+            enemyTeam={enemyTeam}
+            selectedSlotRef={selectedSlotRef}
+            onPickMonster={handleQuickPickMonster}
+            onOpenAddMonster={onOpenAddMonster}
+            onShowToast={showToast}
+          />
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleResetDraft}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Làm mới</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleSaveCurrentDraft}
-            className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-black shadow-lg shadow-emerald-500/20 transition-all cursor-pointer active:scale-95"
-            title="Lưu trực tiếp đội hình 5v5 từ bàn cờ ở trên vào lịch sử"
-          >
-            <BookmarkCheck className="w-4 h-4 stroke-[2.5]" />
-            <span>Lưu Lịch Sử Đấu</span>
-          </button>
-        </div>
-      </div>
-
-      {/* THE MAIN BATTLE BOARD - EXACT LAYOUT FROM USER'S IMAGE */}
-      <div className="bg-[#141b2d] border border-slate-800/90 rounded-2xl sm:rounded-3xl p-3 sm:p-6 md:p-8 shadow-2xl overflow-x-auto">
-        <div className="w-max min-w-full flex items-center justify-center gap-2 min-[420px]:gap-3 sm:gap-6 md:gap-8 select-none py-2 px-1">
-          
-          {/* LEFT TEAM (5 MONSTERS) */}
-          {firstPickSide === 'mine' ? (
-            /* 1 - 2 - 2 (Team Tôi là 1st Pick) */
-            <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3">
-              {/* Standalone Slot 1 on outer flank */}
-              <div className="flex items-center justify-center">
-                {renderSlot('mine', getIndexByOrder(myTeam, 1), 'lg')}
-              </div>
-
-              {/* 2x2 Grid: Col 1 = [4, 5], Col 2 = [8, 9] */}
-              <div className="grid grid-cols-2 grid-rows-2 gap-1.5 min-[400px]:gap-2 sm:gap-3">
-                {renderSlot('mine', getIndexByOrder(myTeam, 4), 'lg')}
-                {renderSlot('mine', getIndexByOrder(myTeam, 8), 'lg')}
-                {renderSlot('mine', getIndexByOrder(myTeam, 5), 'lg')}
-                {renderSlot('mine', getIndexByOrder(myTeam, 9), 'lg')}
-              </div>
-            </div>
-          ) : (
-            /* 2 - 2 - 1 (Team Tôi là 2nd Pick) */
-            <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3">
-              {/* 2x2 Grid first: Col 1 = [2, 3], Col 2 = [6, 7] */}
-              <div className="grid grid-cols-2 grid-rows-2 gap-1.5 min-[400px]:gap-2 sm:gap-3">
-                {renderSlot('mine', getIndexByOrder(myTeam, 2), 'lg')}
-                {renderSlot('mine', getIndexByOrder(myTeam, 6), 'lg')}
-                {renderSlot('mine', getIndexByOrder(myTeam, 3), 'lg')}
-                {renderSlot('mine', getIndexByOrder(myTeam, 7), 'lg')}
-              </div>
-
-              {/* Standalone Slot 10 near center */}
-              <div className="flex items-center justify-center">
-                {renderSlot('mine', getIndexByOrder(myTeam, 10), 'lg')}
-              </div>
-            </div>
-          )}
-
-          {/* CENTER: Crossed Swords Circle */}
-          <div className="flex items-center justify-center px-0.5 sm:px-1 shrink-0">
-            <div className="w-9 h-9 min-[400px]:w-10 min-[400px]:h-10 sm:w-12 sm:h-12 md:w-13 md:h-13 rounded-full bg-[#1b253b] border border-slate-700/80 flex items-center justify-center text-slate-400 shadow-inner">
-              <Swords className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 stroke-[2]" />
-            </div>
-          </div>
-
-          {/* RIGHT TEAM (5 MONSTERS) */}
-          {firstPickSide === 'mine' ? (
-            /* 2 - 2 - 1 (Team Địch là 2nd Pick) */
-            <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3">
-              {/* 2x2 Grid first: Col 1 = [2, 3], Col 2 = [6, 7] */}
-              <div className="grid grid-cols-2 grid-rows-2 gap-1.5 min-[400px]:gap-2 sm:gap-3">
-                {renderSlot('enemy', getIndexByOrder(enemyTeam, 2), 'lg')}
-                {renderSlot('enemy', getIndexByOrder(enemyTeam, 6), 'lg')}
-                {renderSlot('enemy', getIndexByOrder(enemyTeam, 3), 'lg')}
-                {renderSlot('enemy', getIndexByOrder(enemyTeam, 7), 'lg')}
-              </div>
-
-              {/* Standalone Slot 10 on outer flank */}
-              <div className="flex items-center justify-center">
-                {renderSlot('enemy', getIndexByOrder(enemyTeam, 10), 'lg')}
-              </div>
-            </div>
-          ) : (
-            /* 1 - 2 - 2 (Team Địch là 1st Pick) */
-            <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3">
-              {/* Standalone Slot 1 near center */}
-              <div className="flex items-center justify-center">
-                {renderSlot('enemy', getIndexByOrder(enemyTeam, 1), 'lg')}
-              </div>
-
-              {/* 2x2 Grid after: Col 1 = [4, 5], Col 2 = [8, 9] */}
-              <div className="grid grid-cols-2 grid-rows-2 gap-1.5 min-[400px]:gap-2 sm:gap-3">
-                {renderSlot('enemy', getIndexByOrder(enemyTeam, 4), 'lg')}
-                {renderSlot('enemy', getIndexByOrder(enemyTeam, 8), 'lg')}
-                {renderSlot('enemy', getIndexByOrder(enemyTeam, 5), 'lg')}
-                {renderSlot('enemy', getIndexByOrder(enemyTeam, 9), 'lg')}
-              </div>
-            </div>
-          )}
-
-        </div>
-      </div>
-
-      {/* QUICK SLOT TOOLBAR (Appears when clicking any slot to easily edit/ban/leader) */}
-      {selectedSlotRef && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 sm:p-3.5 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl animate-in fade-in text-xs">
-          <div className="flex items-center justify-between sm:justify-start gap-2.5">
+        {/* Center Column: Controls Bar + Battle Board + Quick Slot Toolbar */}
+        <div className="lg:col-span-6 xl:col-span-6 order-1 lg:order-2 space-y-4 min-w-0">
+          {/* Sleek Minimalist Controls Bar (No redundant text) */}
+          <div className="flex flex-wrap items-center justify-between gap-3 px-3 sm:px-4 py-2.5 sm:py-3 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-lg">
+            {/* First Pick Toggle */}
             <div className="flex items-center gap-2">
-              <span className="text-slate-400 font-semibold text-[11px] sm:text-xs">
-                Vị trí #{selectedSlot?.pickOrder} ({selectedSlotRef.side === 'mine' ? 'Team Tôi' : 'Team Địch'}):
-              </span>
-              <span className="text-teal-300 font-bold text-xs sm:text-sm">
-                {selectedMonster ? selectedMonster.name : '(Chưa chọn pet)'}
-              </span>
+              <span className="text-xs font-bold text-slate-400">1ST Pick:</span>
+              <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => applyFirstPickOrders('mine')}
+                  className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    firstPickSide === 'mine'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Team Trái (Tôi)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyFirstPickOrders('enemy')}
+                  className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                    firstPickSide === 'enemy'
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Team Phải (Địch)
+                </button>
+              </div>
             </div>
-            {/* Close button for mobile inside header row */}
-            <button
-              type="button"
-              onClick={() => setSelectedSlotRef(null)}
-              className="sm:hidden p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-              title="Đóng"
-            >
-              <X className="w-4 h-4" />
-            </button>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleResetDraft}
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Làm mới</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCurrentDraft}
+                className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-black shadow-lg shadow-emerald-500/20 transition-all cursor-pointer active:scale-95"
+                title="Lưu trực tiếp đội hình 5v5 từ bàn cờ ở trên vào lịch sử"
+              >
+                <BookmarkCheck className="w-4 h-4 stroke-[2.5]" />
+                <span>Lưu Lịch Sử Đấu</span>
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={() => setActivePickerSlot(selectedSlotRef)}
-              className="flex-1 sm:flex-initial px-3 py-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold rounded-xl cursor-pointer text-center text-xs"
-            >
-              Đổi Pet
-            </button>
-            <button
-              type="button"
-              onClick={() => toggleBan(selectedSlotRef.side, selectedSlotRef.index)}
-              className={`flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer text-xs ${
-                selectedSlot?.isBanned
-                  ? 'bg-rose-500 text-white'
-                  : 'bg-slate-800 hover:bg-slate-700 text-rose-300'
-              }`}
-            >
-              <Ban className="w-3.5 h-3.5 stroke-[2.5]" />
-              {selectedSlot?.isBanned ? 'Bỏ Cấm' : 'Cấm'}
-            </button>
-            <button
-              type="button"
-              onClick={() => toggleLeader(selectedSlotRef.side, selectedSlotRef.index)}
-              className={`flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer text-xs ${
-                selectedSlot?.isLeader
-                  ? 'bg-amber-400 text-slate-950'
-                  : 'bg-slate-800 hover:bg-slate-700 text-amber-300'
-              }`}
-            >
-              <Crown className="w-3.5 h-3.5 fill-current" />
-              {selectedSlot?.isLeader ? 'Bỏ Lead' : 'Đặt Lead'}
-            </button>
-            <button
-              type="button"
-              onClick={() => clearSlot(selectedSlotRef.side, selectedSlotRef.index)}
-              className="px-2 py-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-800 cursor-pointer text-xs"
-              title="Xóa slot"
-            >
-              Xóa
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedSlotRef(null)}
-              className="hidden sm:inline-flex p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
-              title="Đóng"
-            >
-              <X className="w-4 h-4" />
-            </button>
+          {/* THE MAIN BATTLE BOARD - EXACT LAYOUT FROM USER'S IMAGE */}
+          <div className="bg-[#141b2d] border border-slate-800/90 rounded-2xl sm:rounded-3xl p-3 sm:p-5 md:p-6 shadow-2xl overflow-x-auto">
+            <div className="w-max min-w-full flex items-center justify-center gap-2 min-[420px]:gap-3 sm:gap-4 md:gap-6 select-none py-2 px-1">
+              
+              {/* LEFT TEAM (5 MONSTERS) */}
+              {firstPickSide === 'mine' ? (
+                /* 1 - 2 - 2 (Team Tôi là 1st Pick) */
+                <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3">
+                  {/* Standalone Slot 1 on outer flank */}
+                  <div className="flex items-center justify-center">
+                    {renderSlot('mine', getIndexByOrder(myTeam, 1), 'lg')}
+                  </div>
+
+                  {/* 2x2 Grid: Col 1 = [4, 5], Col 2 = [8, 9] */}
+                  <div className="grid grid-cols-2 grid-rows-2 gap-1.5 min-[400px]:gap-2 sm:gap-3">
+                    {renderSlot('mine', getIndexByOrder(myTeam, 4), 'lg')}
+                    {renderSlot('mine', getIndexByOrder(myTeam, 8), 'lg')}
+                    {renderSlot('mine', getIndexByOrder(myTeam, 5), 'lg')}
+                    {renderSlot('mine', getIndexByOrder(myTeam, 9), 'lg')}
+                  </div>
+                </div>
+              ) : (
+                /* 2 - 2 - 1 (Team Tôi là 2nd Pick) */
+                <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3">
+                  {/* 2x2 Grid first: Col 1 = [2, 3], Col 2 = [6, 7] */}
+                  <div className="grid grid-cols-2 grid-rows-2 gap-1.5 min-[400px]:gap-2 sm:gap-3">
+                    {renderSlot('mine', getIndexByOrder(myTeam, 2), 'lg')}
+                    {renderSlot('mine', getIndexByOrder(myTeam, 6), 'lg')}
+                    {renderSlot('mine', getIndexByOrder(myTeam, 3), 'lg')}
+                    {renderSlot('mine', getIndexByOrder(myTeam, 7), 'lg')}
+                  </div>
+
+                  {/* Standalone Slot 10 near center */}
+                  <div className="flex items-center justify-center">
+                    {renderSlot('mine', getIndexByOrder(myTeam, 10), 'lg')}
+                  </div>
+                </div>
+              )}
+
+              {/* CENTER: Crossed Swords Circle */}
+              <div className="flex items-center justify-center px-0.5 sm:px-1 shrink-0">
+                <div className="w-9 h-9 min-[400px]:w-10 min-[400px]:h-10 sm:w-12 sm:h-12 md:w-13 md:h-13 rounded-full bg-[#1b253b] border border-slate-700/80 flex items-center justify-center text-slate-400 shadow-inner">
+                  <Swords className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 stroke-[2]" />
+                </div>
+              </div>
+
+              {/* RIGHT TEAM (5 MONSTERS) */}
+              {firstPickSide === 'mine' ? (
+                /* 2 - 2 - 1 (Team Địch là 2nd Pick) */
+                <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3">
+                  {/* 2x2 Grid first: Col 1 = [2, 3], Col 2 = [6, 7] */}
+                  <div className="grid grid-cols-2 grid-rows-2 gap-1.5 min-[400px]:gap-2 sm:gap-3">
+                    {renderSlot('enemy', getIndexByOrder(enemyTeam, 2), 'lg')}
+                    {renderSlot('enemy', getIndexByOrder(enemyTeam, 6), 'lg')}
+                    {renderSlot('enemy', getIndexByOrder(enemyTeam, 3), 'lg')}
+                    {renderSlot('enemy', getIndexByOrder(enemyTeam, 7), 'lg')}
+                  </div>
+
+                  {/* Standalone Slot 10 on outer flank */}
+                  <div className="flex items-center justify-center">
+                    {renderSlot('enemy', getIndexByOrder(enemyTeam, 10), 'lg')}
+                  </div>
+                </div>
+              ) : (
+                /* 1 - 2 - 2 (Team Địch là 1st Pick) */
+                <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3">
+                  {/* Standalone Slot 1 near center */}
+                  <div className="flex items-center justify-center">
+                    {renderSlot('enemy', getIndexByOrder(enemyTeam, 1), 'lg')}
+                  </div>
+
+                  {/* 2x2 Grid after: Col 1 = [4, 5], Col 2 = [8, 9] */}
+                  <div className="grid grid-cols-2 grid-rows-2 gap-1.5 min-[400px]:gap-2 sm:gap-3">
+                    {renderSlot('enemy', getIndexByOrder(enemyTeam, 4), 'lg')}
+                    {renderSlot('enemy', getIndexByOrder(enemyTeam, 8), 'lg')}
+                    {renderSlot('enemy', getIndexByOrder(enemyTeam, 5), 'lg')}
+                    {renderSlot('enemy', getIndexByOrder(enemyTeam, 9), 'lg')}
+                  </div>
+                </div>
+              )}
+
+            </div>
           </div>
+
+          {/* QUICK SLOT TOOLBAR (Appears when clicking any slot to easily edit/ban/leader) */}
+          {selectedSlotRef && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 sm:p-3.5 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl animate-in fade-in text-xs">
+              <div className="flex items-center justify-between sm:justify-start gap-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 font-semibold text-[11px] sm:text-xs">
+                    Vị trí #{selectedSlot?.pickOrder} ({selectedSlotRef.side === 'mine' ? 'Team Tôi' : 'Team Địch'}):
+                  </span>
+                  <span className="text-teal-300 font-bold text-xs sm:text-sm">
+                    {selectedMonster ? selectedMonster.name : '(Chưa chọn pet)'}
+                  </span>
+                </div>
+                {/* Close button for mobile inside header row */}
+                <button
+                  type="button"
+                  onClick={() => setSelectedSlotRef(null)}
+                  className="sm:hidden p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+                  title="Đóng"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setActivePickerSlot(selectedSlotRef)}
+                  className="flex-1 sm:flex-initial px-3 py-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold rounded-xl cursor-pointer text-center text-xs"
+                >
+                  {selectedMonster ? 'Đổi Pet' : 'Chọn Pet'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleBan(selectedSlotRef.side, selectedSlotRef.index)}
+                  className={`flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer text-xs ${
+                    selectedSlot?.isBanned
+                      ? 'bg-rose-500 text-white'
+                      : 'bg-slate-800 hover:bg-slate-700 text-rose-300'
+                  }`}
+                >
+                  <Ban className="w-3.5 h-3.5 stroke-[2.5]" />
+                  {selectedSlot?.isBanned ? 'Bỏ Cấm' : 'Cấm'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => toggleLeader(selectedSlotRef.side, selectedSlotRef.index)}
+                  className={`flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl font-bold transition-colors cursor-pointer text-xs ${
+                    selectedSlot?.isLeader
+                      ? 'bg-amber-400 text-slate-950'
+                      : 'bg-slate-800 hover:bg-slate-700 text-amber-300'
+                  }`}
+                >
+                  <Crown className="w-3.5 h-3.5 fill-current" />
+                  {selectedSlot?.isLeader ? 'Bỏ Lead' : 'Đặt Lead'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => clearSlot(selectedSlotRef.side, selectedSlotRef.index)}
+                  className="px-2 py-1.5 text-slate-400 hover:text-red-400 rounded-lg hover:bg-slate-800 cursor-pointer text-xs"
+                  title="Xóa slot"
+                >
+                  Xóa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSlotRef(null)}
+                  className="hidden sm:inline-flex p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 cursor-pointer"
+                  title="Đóng"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Right Column: Thứ Tự Cần Giết (Desktop Right empty space) */}
+        <div className="lg:col-span-3 xl:col-span-3 order-3">
+          <KillOrderPanel
+            enemyTeam={enemyTeam}
+            allMonsters={allMonsters}
+            killOrder={killOrder}
+            onUpdateKillOrder={setKillOrder}
+            onShowToast={showToast}
+          />
+        </div>
+      </div>
 
       {/* MATCH HISTORY CARDS (Rendered in the exact same authentic 5v5 layout) */}
       <div className="space-y-3 pt-2">

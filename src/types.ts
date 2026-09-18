@@ -48,6 +48,8 @@ export interface SiegeCounterStrategy {
   strategy: string;
   turnOrder?: string;
   difficulty?: 'Dễ' | 'Trung bình' | 'Yêu cầu rune cao';
+  isCustom?: boolean;
+  updatedAt?: string;
 }
 
 export interface SavedSiegeDefense {
