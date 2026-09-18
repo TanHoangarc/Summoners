@@ -5,6 +5,7 @@ import {
   Zap,
   Search,
   Settings2,
+  Cloud,
 } from 'lucide-react';
 import { Monster, RTASlot } from '../../types';
 import { getMonsterById } from '../../utils/monsterHelpers';
@@ -144,6 +145,10 @@ export const QuickPickSuggestions: React.FC<QuickPickSuggestionsProps> = ({
                 {favoriteMonsters.length}
               </span>
             </h3>
+            <span className="text-[10px] text-teal-400 font-medium flex items-center gap-1 mt-1">
+              <Cloud className="w-2.5 h-2.5 text-teal-400" />
+              Đồng bộ Firebase
+            </span>
           </div>
         </div>
 

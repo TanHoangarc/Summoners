@@ -15,5 +15,15 @@ service cloud.firestore {
     match /siege_defenses/{defenseId} {
       allow read, write: if true;
     }
+
+    // RTA Matches collection: read and write allowed for RTA match history sync across devices
+    match /rta_matches/{matchId} {
+      allow read, write: if true;
+    }
+
+    // RTA Settings collection: read and write allowed for Favorite picks sync across devices
+    match /rta_settings/{settingId} {
+      allow read, write: if true;
+    }
   }
 }

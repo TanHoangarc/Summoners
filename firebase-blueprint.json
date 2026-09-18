@@ -62,6 +62,57 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "defenseMonsterIds", "counterMonsterIds", "strategy"]
+    },
+    "rta_matches": {
+      "title": "Lịch Sử Trận Đấu RTA (RTA Match Records)",
+      "description": "Danh sách lịch sử các trận cấm/chọn (draft) và kết quả trận đấu RTA được lưu trữ trên Firestore để đồng bộ giữa các thiết bị",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "result": { "type": "string" },
+        "myTeam": { "type": "array" },
+        "enemyTeam": { "type": "array" },
+        "notes": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "createdAt", "result", "myTeam", "enemyTeam"]
+    },
+    "rta_settings": {
+      "title": "Cấu hình & Pet Hay Pick RTA (RTA Settings & Favorites)",
+      "description": "Lưu trữ danh sách Pet Tôi Hay Pick và cấu hình RTA để đồng bộ giữa các máy",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "monsterIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "monsterIds"]
+    }
+  },
+  "firestore": {
+    "/monsters/{monsterId}": {
+      "schema": "monsters",
+      "description": "Bộ sưu tập quái thú"
+    },
+    "/counters/{counterId}": {
+      "schema": "counters",
+      "description": "Bộ sưu tập chiến thuật counter siege"
+    },
+    "/siege_defenses/{defenseId}": {
+      "schema": "siege_defenses",
+      "description": "Bộ sưu tập đội hình phòng thủ siege"
+    },
+    "/rta_matches/{matchId}": {
+      "schema": "rta_matches",
+      "description": "Bộ sưu tập lịch sử trận đấu RTA đồng bộ giữa các máy"
+    },
+    "/rta_settings/{settingId}": {
+      "schema": "rta_settings",
+      "description": "Bộ sưu tập cấu hình và danh sách Pet Tôi Hay Pick"
     }
   }
 }

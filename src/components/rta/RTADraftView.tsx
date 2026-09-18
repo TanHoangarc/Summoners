@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Zap,
   Sparkles,
+  Cloud,
 } from 'lucide-react';
 import { Monster, RTAMatchRecord, RTASlot } from '../../types';
 import { getMonsterById } from '../../utils/monsterHelpers';
@@ -24,6 +25,15 @@ import {
   computeRTAAutoSuggestions,
   AutoSuggestionState,
 } from '../../utils/rtaAutoSuggester';
+import {
+  subscribeToRTAMatches,
+  saveRTAMatchToFirestore,
+  deleteRTAMatchFromFirestore,
+  seedRTAMatchesToFirestore,
+  subscribeToRTAFavorites,
+  saveRTAFavoritesToFirestore,
+  DEFAULT_SAMPLE_MATCHES,
+} from '../../lib/rtaFirestoreService';
 
 interface RTADraftViewProps {
   allMonsters: Monster[];
@@ -208,6 +218,104 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     }
     return [];
   });
+
+  // Trạng thái kết nối Firebase
+  const [isFirebaseMatchesSynced, setIsFirebaseMatchesSynced] = useState(false);
+  const [isFirebaseFavoritesSynced, setIsFirebaseFavoritesSynced] = useState(false);
+
+  // Realtime sync Lịch Sử Trận Đấu RTA từ Firebase Firestore
+  useEffect(() => {
+    let isMounted = true;
+    const unsubscribe = subscribeToRTAMatches(
+      async (firestoreMatches) => {
+        if (!isMounted) return;
+        if (firestoreMatches.length > 0) {
+          setMatchHistory(firestoreMatches);
+          try {
+            localStorage.setItem(RTA_HISTORY_STORAGE_KEY, JSON.stringify(firestoreMatches));
+          } catch (e) {
+            console.error(e);
+          }
+        } else {
+          // Nếu Firestore chưa có dữ liệu, khởi tạo nạp các trận mẫu hiện có lên Firestore
+          const localHistory = getStoredHistory();
+          const initialMatches = localHistory.length > 0 ? localHistory : DEFAULT_SAMPLE_MATCHES;
+          setMatchHistory(initialMatches);
+          try {
+            await seedRTAMatchesToFirestore(initialMatches);
+          } catch (err) {
+            console.warn('Lỗi khi seed trận mẫu RTA lên Firebase:', err);
+          }
+        }
+        setIsFirebaseMatchesSynced(true);
+      },
+      (err) => {
+        console.warn('Lỗi kết nối Firebase RTA Matches:', err);
+        setIsFirebaseMatchesSynced(true);
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Realtime sync Pet Tôi Hay Pick từ Firebase Firestore
+  useEffect(() => {
+    let isMounted = true;
+    const unsubscribe = subscribeToRTAFavorites(
+      async (firestoreFavs) => {
+        if (!isMounted) return;
+        if (firestoreFavs.length > 0) {
+          setFavoriteIds(firestoreFavs);
+          try {
+            localStorage.setItem('sw_rta_favorite_picks_v3', JSON.stringify(firestoreFavs));
+          } catch (e) {
+            console.error(e);
+          }
+        } else {
+          // Nếu Firestore trống nhưng localStorage đang có danh sách favorites
+          try {
+            const saved = localStorage.getItem('sw_rta_favorite_picks_v3');
+            if (saved) {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                setFavoriteIds(parsed);
+                await saveRTAFavoritesToFirestore(parsed);
+              }
+            }
+          } catch (err) {
+            console.warn('Lỗi đồng bộ ban đầu favorites lên Firebase:', err);
+          }
+        }
+        setIsFirebaseFavoritesSynced(true);
+      },
+      (err) => {
+        console.warn('Lỗi kết nối Firebase RTA Favorites:', err);
+        setIsFirebaseFavoritesSynced(true);
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  // Handler cập nhật Pet Tôi Hay Pick và đồng bộ tức thì lên Firebase Firestore
+  const handleUpdateFavoriteIds = (newIds: string[]) => {
+    setFavoriteIds(newIds);
+    try {
+      localStorage.setItem('sw_rta_favorite_picks_v3', JSON.stringify(newIds));
+    } catch (e) {
+      console.error(e);
+    }
+    // Ghi lên Firebase Firestore để đồng bộ giữa tất cả các máy
+    saveRTAFavoritesToFirestore(newIds).catch((err) => {
+      console.warn('Lỗi khi lưu Pet Hay Pick lên Firebase:', err);
+    });
+  };
 
   // Lưu trạng thái công tắc auto vào localStorage
   useEffect(() => {
@@ -471,7 +579,7 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
   };
 
   // Lưu trực tiếp đội hình 5v5 từ bàn cờ ở trên vào lịch sử đấu (mặc định Victory)
-  const handleSaveCurrentDraft = () => {
+  const handleSaveCurrentDraft = async () => {
     const hasMonsters =
       myTeam.some((s) => Boolean(s.monsterId)) ||
       enemyTeam.some((s) => Boolean(s.monsterId));
@@ -489,14 +597,26 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
       enemyTeam: enemyTeam.map((s) => ({ ...s })),
     };
     saveHistoryToStorage([newRecord, ...matchHistory]);
-    showToast('Đã lưu đội hình vào lịch sử đấu!');
+    try {
+      await saveRTAMatchToFirestore(newRecord);
+      showToast('Đã lưu & đồng bộ trận đấu lên Firebase!');
+    } catch (err) {
+      console.warn('Lỗi lưu trận đấu lên Firebase:', err);
+      showToast('Đã lưu đội hình vào lịch sử đấu!');
+    }
   };
 
   // Delete match
-  const handleDeleteMatch = (id: string) => {
+  const handleDeleteMatch = async (id: string) => {
     const updated = matchHistory.filter((m) => m.id !== id);
     saveHistoryToStorage(updated);
-    showToast('Đã xóa trận đấu khỏi lịch sử');
+    try {
+      await deleteRTAMatchFromFirestore(id);
+      showToast('Đã xóa trận đấu (đồng bộ Firebase)');
+    } catch (err) {
+      console.warn('Lỗi xóa trận đấu khỏi Firebase:', err);
+      showToast('Đã xóa trận đấu khỏi lịch sử');
+    }
   };
 
   // Load match from history back onto the board for review/replay
@@ -646,7 +766,7 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
             onOpenAddMonster={onOpenAddMonster}
             onShowToast={showToast}
             favoriteIds={favoriteIds}
-            onUpdateFavoriteIds={setFavoriteIds}
+            onUpdateFavoriteIds={handleUpdateFavoriteIds}
           />
         </div>
 
@@ -972,11 +1092,15 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
       {/* MATCH HISTORY CARDS (Rendered in the exact same authentic 5v5 layout) */}
       <div className="space-y-3 pt-2">
         <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2 text-slate-300 font-bold text-sm">
+          <div className="flex flex-wrap items-center gap-2 text-slate-300 font-bold text-sm">
             <History className="w-4 h-4 text-teal-400" />
             <span>Lịch Sử Trận Đấu RTA</span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-semibold border border-slate-700">
               {matchHistory.length} trận
+            </span>
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-teal-400 bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 rounded-full">
+              <Cloud className="w-3 h-3" />
+              {isFirebaseMatchesSynced ? 'Đồng bộ Firebase' : 'Đang kết nối...'}
             </span>
           </div>
 
