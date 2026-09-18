@@ -53,11 +53,11 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
   allMonsters,
   onOpenAddMonster,
 }) => {
-  // Current 3 defense monsters (Default to Geldnir + Ophilia + Theomars as in Screenshot 2!)
+  // Current 3 defense monsters (Default empty as requested by user)
   const [defenseIds, setDefenseIds] = useState<[string | null, string | null, string | null]>([
-    'geldnir',
-    'ophilia',
-    'theomars',
+    null,
+    null,
+    null,
   ]);
 
   // Saved defense teams state with localStorage fallback
@@ -164,9 +164,7 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
   const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
 
   // Expanded strategy IDs
-  const [expandedStrategyIds, setExpandedStrategyIds] = useState<Record<string, boolean>>({
-    'counter-g-o-t-1': true, // default first one expanded
-  });
+  const [expandedStrategyIds, setExpandedStrategyIds] = useState<Record<string, boolean>>({});
 
   // Selected defense monsters
   const defMonsters = defenseIds.map((id) => getMonsterById(allMonsters, id));
@@ -438,6 +436,17 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
                     showName={false}
                     isLeader={index === 0}
                     onClick={() => setActiveSlotIndex(index)}
+                    onClear={
+                      id
+                        ? () => {
+                            setDefenseIds((prev) => {
+                              const next = [...prev] as [string | null, string | null, string | null];
+                              next[index] = null;
+                              return next;
+                            });
+                          }
+                        : undefined
+                    }
                     emptyLabel={`Pet ${index + 1}`}
                   />
                 </div>

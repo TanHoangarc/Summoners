@@ -12,6 +12,7 @@ import {
   ArrowRight,
   ShieldAlert,
   Check,
+  Clipboard,
 } from 'lucide-react';
 import { ElementType, Monster, MonsterRole } from '../../types';
 import { ELEMENT_COLORS, ROLE_LABELS } from '../../utils/monsterHelpers';
@@ -57,6 +58,7 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
   const [imageValid, setImageValid] = useState<boolean | null>(null);
   const [testingImage, setTestingImage] = useState(false);
   const [autoFilledInfo, setAutoFilledInfo] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   useEffect(() => {
     setCurrentEditingMonster(editingMonster || null);
@@ -126,6 +128,43 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
     setAvatarUrl(url);
     testAvatarUrl(url);
     detectAndApplyMonsterData(url);
+  };
+
+  const handleCopyAvatarUrl = async () => {
+    if (!avatarUrl) return;
+    try {
+      await navigator.clipboard.writeText(avatarUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      // Fallback
+      const textArea = document.createElement('textarea');
+      textArea.value = avatarUrl;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    }
+  };
+
+  const handlePasteAvatarUrl = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim()) {
+          handleAvatarChange(text.trim());
+          return;
+        }
+      }
+    } catch {
+      // If clipboard permission is denied or unsupported, prompt fallback
+      const text = window.prompt('Dán link ảnh avatar của bạn vào đây:');
+      if (text && text.trim()) {
+        handleAvatarChange(text.trim());
+      }
+    }
   };
 
   const handleManualAutoDetect = () => {
@@ -454,17 +493,46 @@ export const MonsterFormModal: React.FC<MonsterFormModalProps> = ({
                 />
               </div>
 
-              {/* URL Input */}
-              <div className="flex-1">
-                <div className="relative">
-                  <LinkIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-                  <input
-                    type="url"
-                    placeholder="Dán link ảnh Pet (vd: https://do9d4mpqk497d.cloudfront.net/.../unit_icon_0027_4_1.png hoặc Swarfarm)"
-                    value={avatarUrl}
-                    onChange={(e) => handleAvatarChange(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400"
-                  />
+              {/* URL Input with Quick Copy & Paste Buttons */}
+              <div className="flex-1 space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <div className="relative flex-1">
+                    <LinkIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                    <input
+                      type="url"
+                      placeholder="Dán link ảnh Pet (vd: https://do9d4mpqk497d.cloudfront.net/.../unit_icon_0027_4_1.png hoặc Swarfarm)"
+                      value={avatarUrl}
+                      onChange={(e) => handleAvatarChange(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400"
+                    />
+                  </div>
+
+                  {/* Quick Paste Button (Icon only) */}
+                  <button
+                    type="button"
+                    onClick={handlePasteAvatarUrl}
+                    className="w-8 h-8 inline-flex items-center justify-center bg-teal-500/15 hover:bg-teal-500/25 active:scale-95 text-teal-300 hover:text-teal-200 border border-teal-500/30 rounded-xl transition-all shrink-0 cursor-pointer"
+                    title="Dán link ảnh (Paste từ clipboard)"
+                    aria-label="Dán link ảnh"
+                  >
+                    <Clipboard className="w-4 h-4" />
+                  </button>
+
+                  {/* Quick Copy Button (Icon only) */}
+                  <button
+                    type="button"
+                    onClick={handleCopyAvatarUrl}
+                    disabled={!avatarUrl}
+                    className="w-8 h-8 inline-flex items-center justify-center bg-slate-800/80 hover:bg-slate-700 disabled:bg-slate-900 text-slate-300 disabled:text-slate-600 border border-slate-700 disabled:border-slate-800 rounded-xl transition-all shrink-0 cursor-pointer disabled:cursor-not-allowed"
+                    title={copiedLink ? 'Đã sao chép link' : 'Sao chép link ảnh (Copy)'}
+                    aria-label="Sao chép link ảnh"
+                  >
+                    {copiedLink ? (
+                      <Check className="w-4 h-4 text-emerald-400 animate-in zoom-in duration-150" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                  </button>
                 </div>
               </div>
             </div>

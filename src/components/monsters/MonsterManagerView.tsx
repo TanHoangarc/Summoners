@@ -270,7 +270,7 @@ export const MonsterManagerView: React.FC<MonsterManagerViewProps> = ({
             >
               All
             </button>
-            {[5, 4, 3].map((star) => (
+            {[5, 4, 3, 2].map((star) => (
               <button
                 key={star}
                 type="button"
