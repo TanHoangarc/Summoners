@@ -1,7 +1,7 @@
 import { Monster } from '../types';
 
 export interface GenerateStrategyResult {
-  turnOrder: string;
+  turnOrder?: string;
   difficulty: 'Dễ' | 'Trung bình' | 'Yêu cầu rune cao';
   strategy: string;
   source?: string;

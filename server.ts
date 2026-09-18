@@ -38,34 +38,38 @@ function generateRuleBasedStrategy(
   defenseMonsters: Array<{ name: string; element?: string }>,
   counterMonsters: Array<{ name: string; element?: string }>
 ) {
-  const defNames = defenseMonsters.map((m) => m.name).join(", ");
-  const cNames = counterMonsters.map((m) => m.name);
-  const turnOrder = cNames.join(" > ");
+  const p1 = counterMonsters[0]?.name || "Pet 1";
+  const p2 = counterMonsters[1]?.name || "Pet 2";
+  const p3 = counterMonsters[2]?.name || "Pet 3";
 
-  // Identify high-threat targets
-  const targetName = defenseMonsters[0]?.name || "mục tiêu chủ lực";
-  const defElements = defenseMonsters.map((m) => m.element || "");
+  const targetName = defenseMonsters[0]?.name || "mục tiêu nguy hiểm nhất";
+  const defNames = defenseMonsters.map((m) => m.name).join(", ");
 
   let difficulty: "Dễ" | "Trung bình" | "Yêu cầu rune cao" = "Trung bình";
-  if (defNames.toLowerCase().includes("savannah") || defNames.toLowerCase().includes("clara") || defNames.toLowerCase().includes("carcano")) {
-    difficulty = "Trung bình";
+  if (
+    defNames.toLowerCase().includes("savannah") ||
+    defNames.toLowerCase().includes("clara") ||
+    defNames.toLowerCase().includes("carcano") ||
+    defNames.toLowerCase().includes("theomars")
+  ) {
+    difficulty = "Yêu cầu rune cao";
   }
 
-  const strategy = `1. Mục tiêu ưu tiên (Kill Order):
-- Tập trung dồn sát thương và kết liễu nhanh ${targetName} đầu tiên để phá vỡ thế trận đe dọa của đối thủ.
-- Luôn giữ kỹ năng khống chế hoặc khiêu khích đối với quái phụ để tránh bị bạo kích (Violent proc) bất ngờ.
+  const strategy = `1. Hướng Dẫn Sử Dụng Kỹ Năng (Skill):
+- Pet 1 (${p1}): Khởi đầu dùng Skill 2 hoặc Skill 3 để xóa bùa Will/khiên team địch hoặc buff Tăng Công / Miễn Nhiễm cho đồng đội.
+- Pet 2 (${p2}): Dùng Skill bẻ giáp (Defense Break) hoặc khống chế làm choáng/khóa skill nhắm thẳng vào ${targetName}.
+- Pet 3 (${p3}): Kích hoạt Skill sát thương chủ lực (Skill 3 / Skill 2) để dồn sát thương kết liễu ngay ${targetName}.
 
-2. Cách đánh & Phối hợp kỹ năng:
-- Bắt đầu lượt với ${cNames[0] || "quái tốc độ cao"} để mở giao tranh (bật bùa tăng công/tốc độ hoặc giải bùa lợi Will của team địch).
-- Sử dụng ${cNames[1] || "quái hỗ trợ/debuff"} bẻ giáp (Defense Break) vào ${targetName}.
-- Đưa ${cNames[2] || "quái dồn sát thương"} vào dứt điểm mục tiêu đã trúng debuff giáp.
+2. Yêu Cầu Chỉ Số Chi Tiết Từng Pet:
+- Pet 1 (${p1}) yêu cầu (Atk: +500 ~ +800 | HP: +20.000 ~ +25.000 | SPD: +140 ~ +160)
+- Pet 2 (${p2}) yêu cầu (Atk: +700 ~ +1.000 | HP: +18.000 ~ +22.000 | SPD: +130 ~ +145)
+- Pet 3 (${p3}) yêu cầu (Atk: +1.500 ~ +1.900 | HP: +8.000 ~ +12.000 | SPD: +105 ~ +125)
 
-3. Lưu ý rune & Biến số an toàn:
-- Đảm bảo toàn đội có ít nhất 1-2 bộ Will để kháng choáng/phá giáp từ lượt đầu của team phòng thủ.
-- Cân đối tốc độ (Speed Tuning) chuẩn xác để quái buff/strip luôn đi trước quái dứt điểm.`;
+3. Mục Tiêu Dứt Điểm (Kill Order) & Lưu Ý:
+- Thứ tự hạ gục: Tập trung tiêu diệt ${targetName} trước tiên, sau đó lần lượt dọn dẹp các mục tiêu phụ.
+- Đảm bảo toàn đội có ít nhất 1-2 bộ Will để tránh bị dính debuff/choáng ngay từ lượt mở màn của địch.`;
 
   return {
-    turnOrder,
     difficulty,
     strategy,
   };
@@ -105,24 +109,31 @@ Hãy phân tích kèo đối đầu chi tiết giữa:
 - ĐỘI HÌNH PHÒNG THỦ (DEFENSE): ${defenseMonsters
       .map((m) => `${m.name} (${m.element || "Không rõ hệ"})`)
       .join(", ")}
-- ĐỘI HÌNH KHẮC CHẾ (COUNTER): ${counterMonsters
-      .map((m) => `${m.name} (${m.element || "Không rõ hệ"})`)
-      .join(", ")}
+- ĐỘI HÌNH KHẮC CHẾ (COUNTER):
+  + Pet 1: ${counterMonsters[0]?.name} (${counterMonsters[0]?.element || "Không rõ hệ"})
+  + Pet 2: ${counterMonsters[1]?.name} (${counterMonsters[1]?.element || "Không rõ hệ"})
+  + Pet 3: ${counterMonsters[2]?.name} (${counterMonsters[2]?.element || "Không rõ hệ"})
 
-Yêu cầu đưa ra hướng dẫn chiến thuật đánh cụ thể, súc tích và thực chiến:
-1. turnOrder: Thứ tự lượt đi tối ưu nhất giữa 3 pet counter (VD: "Chilling > Galleon > Julie").
-2. difficulty: Độ khó ("Dễ" hoặc "Trung bình" hoặc "Yêu cầu rune cao").
-3. strategy: Bản hướng dẫn chi tiết bao gồm:
-   - Mục tiêu ưu tiên dứt điểm trước (Kill order)
-   - Cách khống chế, giải buff Will/Bảo vệ hoặc kích hoạt kỹ năng khắc chế mấu chốt
-   - Cách phòng ngừa biến số (Violent proc, quái thủ có phản đòn hoặc hồi sinh)
-   - Lưu ý quan trọng về bộ rune (Will, Shield, Violent, Destroy...) và chỉ số cần thiết
+YÊU CẦU BẮT BUỘC VỀ ĐỊNH DẠNG CHIẾN THUẬT (TRONG TRƯỜNG "strategy"):
+Phải tuân thủ chính xác cấu trúc dưới đây bằng tiếng Việt:
 
-Hãy trả về định dạng JSON thuần với cấu trúc:
+1. Hướng Dẫn Sử Dụng Kỹ Năng (Skill):
+- Pet 1 (${counterMonsters[0]?.name}): Sử dụng Skill ? (nêu rõ Skill 1, 2 hay 3, nhắm vào mục tiêu nào, mục đích gì)
+- Pet 2 (${counterMonsters[1]?.name}): Sử dụng Skill ? (nêu rõ Skill 1, 2 hay 3, nhắm vào mục tiêu nào, mục đích gì)
+- Pet 3 (${counterMonsters[2]?.name}): Sử dụng Skill ? (nêu rõ Skill 1, 2 hay 3, nhắm vào mục tiêu nào, mục đích gì)
+
+2. Yêu Cầu Chỉ Số Chi Tiết Từng Pet:
+- Pet 1 (${counterMonsters[0]?.name}) yêu cầu (Atk: +... | HP: +... | SPD: +...)
+- Pet 2 (${counterMonsters[1]?.name}) yêu cầu (Atk: +... | HP: +... | SPD: +...)
+- Pet 3 (${counterMonsters[2]?.name}) yêu cầu (Atk: +... | HP: +... | SPD: +...)
+
+3. Mục Tiêu Dứt Điểm (Kill Order) & Lưu Ý:
+- Thứ tự hạ gục ưu tiên và lưu ý phòng chống rủi ro (Violent proc, khống chế, phản đòn).
+
+Hãy trả về định dạng JSON thuần:
 {
-  "turnOrder": "Tên Pet 1 > Tên Pet 2 > Tên Pet 3",
   "difficulty": "Dễ" | "Trung bình" | "Yêu cầu rune cao",
-  "strategy": "nội dung hướng dẫn chi tiết..."
+  "strategy": "Nội dung tuân thủ đúng 3 phần trên..."
 }`;
 
     const response = await ai.models.generateContent({
@@ -146,7 +157,6 @@ Hãy trả về định dạng JSON thuần với cấu trúc:
     return res.json({
       success: true,
       source: "gemini-3.8-flash",
-      turnOrder: parsed.turnOrder || counterMonsters.map((m: any) => m.name).join(" > "),
       difficulty: parsed.difficulty || "Trung bình",
       strategy: parsed.strategy || text,
     });

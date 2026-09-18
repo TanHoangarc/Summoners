@@ -41,9 +41,9 @@ export interface SiegeCounterStrategy {
   id: string;
   defenseMonsterIds: [string, string, string];
   counterMonsterIds: [string, string, string];
-  rating: number;
-  ratingCount: number;
-  author: string;
+  rating?: number;
+  ratingCount?: number;
+  author?: string;
   date: string;
   strategy: string;
   turnOrder?: string;

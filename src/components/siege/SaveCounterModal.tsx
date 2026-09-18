@@ -3,8 +3,6 @@ import {
   X,
   Swords,
   Shield,
-  Zap,
-  Star,
   CheckCircle,
   HelpCircle,
   Pencil,
@@ -49,11 +47,8 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
   ]);
   const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
 
-  const [turnOrder, setTurnOrder] = useState('');
   const [strategy, setStrategy] = useState('');
   const [difficulty, setDifficulty] = useState<'Dễ' | 'Trung bình' | 'Yêu cầu rune cao'>('Trung bình');
-  const [author, setAuthor] = useState('Chỉ huy SW');
-  const [rating, setRating] = useState<number>(5.0);
   const [error, setError] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiSuccessNotice, setAiSuccessNotice] = useState<string | null>(null);
@@ -66,18 +61,12 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
           editingCounter.counterMonsterIds[1] || null,
           editingCounter.counterMonsterIds[2] || null,
         ]);
-        setTurnOrder(editingCounter.turnOrder || '');
         setStrategy(editingCounter.strategy || '');
         setDifficulty(editingCounter.difficulty || 'Trung bình');
-        setAuthor(editingCounter.author || 'Chỉ huy SW');
-        setRating(editingCounter.rating || 5.0);
       } else {
         setCounterSlots([null, null, null]);
-        setTurnOrder('');
         setStrategy('');
         setDifficulty('Trung bình');
-        setAuthor('Chỉ huy SW');
-        setRating(5.0);
       }
       setError(null);
       setAiSuccessNotice(null);
@@ -91,13 +80,6 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
   const c1 = getMonsterById(allMonsters, counterSlots[0]);
   const c2 = getMonsterById(allMonsters, counterSlots[1]);
   const c3 = getMonsterById(allMonsters, counterSlots[2]);
-
-  const handleAutoFillTurnOrder = () => {
-    const names = [c1?.name, c2?.name, c3?.name].filter(Boolean);
-    if (names.length > 0) {
-      setTurnOrder(names.join(' > '));
-    }
-  };
 
   const handleAIGenerateStrategy = async () => {
     if (!def1 || !def2 || !def3) {
@@ -120,14 +102,11 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
       if (result.strategy) {
         setStrategy(result.strategy);
       }
-      if (result.turnOrder) {
-        setTurnOrder(result.turnOrder);
-      }
       if (result.difficulty) {
         setDifficulty(result.difficulty);
       }
 
-      setAiSuccessNotice('Đã tải chiến thuật và thứ tự lượt đi từ AI thành công!');
+      setAiSuccessNotice('Đã tải chiến thuật và yêu cầu chỉ số từng Pet từ AI thành công!');
       setTimeout(() => setAiSuccessNotice(null), 5000);
     } catch (err: any) {
       setError(err?.message || 'Không thể tạo gợi ý từ AI. Vui lòng thử lại!');
@@ -158,11 +137,10 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
       id: editingCounter ? editingCounter.id : `counter-custom-${Date.now()}`,
       defenseMonsterIds: [defenseIds[0], defenseIds[1], defenseIds[2]],
       counterMonsterIds: [counterSlots[0], counterSlots[1], counterSlots[2]],
-      rating: rating,
+      rating: editingCounter?.rating || 5.0,
       ratingCount: editingCounter ? editingCounter.ratingCount || 1 : 1,
-      author: author.trim() || 'Chỉ huy SW',
+      author: editingCounter?.author || '',
       date: editingCounter ? editingCounter.date : new Date().toLocaleDateString('vi-VN'),
-      turnOrder: turnOrder.trim() || undefined,
       difficulty: difficulty,
       strategy: strategy.trim(),
       isCustom: true,
@@ -279,37 +257,11 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
               </div>
             </div>
 
-            {/* Turn Order */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
-                  <Zap className="w-3.5 h-3.5 text-teal-400" />
-                  Thứ tự lượt đi (Turn Order):
-                </label>
-                {(c1 || c2 || c3) && (
-                  <button
-                    type="button"
-                    onClick={handleAutoFillTurnOrder}
-                    className="text-[11px] text-teal-400 hover:text-teal-300 font-medium cursor-pointer"
-                  >
-                    Gợi ý nhanh từ 3 pet
-                  </button>
-                )}
-              </div>
-              <input
-                type="text"
-                value={turnOrder}
-                onChange={(e) => setTurnOrder(e.target.value)}
-                placeholder="Vd: Chilling > Aaliyah > Feng Yan"
-                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-400"
-              />
-            </div>
-
             {/* Strategy / Tactics */}
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="block text-xs font-bold text-slate-300">
-                  Hướng dẫn cách đánh & Khắc chế chi tiết:
+                  Chiến thuật đánh & Yêu cầu chỉ số từng Pet:
                 </label>
                 <button
                   type="button"
@@ -326,7 +278,7 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
                   ) : (
                     <>
                       <Sparkles className="w-3.5 h-3.5 text-slate-950 stroke-[2.5]" />
-                      <span>✨ AI Gợi ý nhanh chiến thuật</span>
+                      <span>✨ AI Gợi ý chiến thuật</span>
                     </>
                   )}
                 </button>
@@ -340,11 +292,24 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
               )}
 
               <textarea
-                rows={6}
+                rows={9}
                 required
                 value={strategy}
                 onChange={(e) => setStrategy(e.target.value)}
-                placeholder="Mô tả mục tiêu ưu tiên, cách xử lý bùa lợi nguy hiểm, lưu ý chỉ số rune (Will, Shield, Violent, Despair...)... hoặc bấm '✨ AI Gợi ý nhanh chiến thuật' để tải tự động."
+                placeholder={`1. Hướng Dẫn Sử Dụng Kỹ Năng (Skill):
+- Pet 1 (${c1?.name || 'Tên Pet 1'}): Sử dụng Skill ... vào mục tiêu ...
+- Pet 2 (${c2?.name || 'Tên Pet 2'}): Sử dụng Skill ...
+- Pet 3 (${c3?.name || 'Tên Pet 3'}): Sử dụng Skill ...
+
+2. Yêu Cầu Chỉ Số Chi Tiết Từng Pet:
+- Pet 1 yêu cầu (Atk: ... | HP: ... | SPD: ...)
+- Pet 2 yêu cầu (Atk: ... | HP: ... | SPD: ...)
+- Pet 3 yêu cầu (Atk: ... | HP: ... | SPD: ...)
+
+3. Mục Tiêu Dứt Điểm (Kill Order) & Lưu Ý:
+- Thứ tự hạ gục ưu tiên...
+
+(Hoặc bấm '✨ AI Gợi ý chiến thuật' để tự động tạo)`}
                 className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-400 leading-relaxed font-sans"
               />
             </div>
@@ -376,50 +341,6 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
                     </button>
                   );
                 })}
-              </div>
-            </div>
-
-            {/* Author & Rating */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">
-                  Tên người đóng góp / tác giả:
-                </label>
-                <input
-                  type="text"
-                  value={author}
-                  onChange={(e) => setAuthor(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white focus:outline-none focus:border-teal-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1">
-                  Đánh giá hiệu quả (Sao):
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="1.0"
-                    max="5.0"
-                    value={rating}
-                    onChange={(e) => setRating(parseFloat(e.target.value) || 5.0)}
-                    className="w-24 px-3 py-2 bg-slate-950 border border-slate-700/80 rounded-xl text-xs text-white focus:outline-none focus:border-teal-400 text-center font-bold"
-                  />
-                  <div className="flex items-center text-amber-400 gap-0.5">
-                    {[1, 2, 3, 4, 5].map((starIdx) => (
-                      <Star
-                        key={starIdx}
-                        className={`w-4 h-4 ${
-                          starIdx <= Math.round(rating)
-                            ? 'fill-amber-400 text-amber-400'
-                            : 'text-slate-600'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
               </div>
             </div>
 

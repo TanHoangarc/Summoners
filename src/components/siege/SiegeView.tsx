@@ -8,15 +8,12 @@ import {
   Sparkles,
   Info,
   RotateCcw,
-  Zap,
   CheckCircle,
-  ThumbsUp,
   Award,
   BookmarkCheck,
   Check,
   Pencil,
   Trash2,
-  Star,
   Loader2,
 } from 'lucide-react';
 import { Monster, SiegeCounterStrategy, SavedSiegeDefense } from '../../types';
@@ -289,7 +286,6 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
       const result = await fetchAICounterStrategy(validDefMonsters, validCMonsters);
       const updated: SiegeCounterStrategy = {
         ...counter,
-        turnOrder: result.turnOrder || counter.turnOrder,
         difficulty: result.difficulty || counter.difficulty,
         strategy: result.strategy || counter.strategy,
         isCustom: true,
@@ -355,26 +351,6 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
 
   const toggleExpand = (id: string) => {
     setExpandedStrategyIds((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const handleRateCounter = async (id: string) => {
-    const target = countersDatabase.find((c) => c.id === id);
-    if (!target) return;
-    const updated: SiegeCounterStrategy = {
-      ...target,
-      ratingCount: (target.ratingCount || 1) + 1,
-    };
-
-    setCountersDatabase((prev) =>
-      prev.map((c) => (c.id === id ? updated : c))
-    );
-    setToastMessage('Đã tăng lượt đánh giá cho counter này!');
-
-    try {
-      await saveSiegeCounterToFirestore(updated);
-    } catch (err) {
-      console.warn('Error updating rating:', err);
-    }
   };
 
   return (
@@ -596,15 +572,6 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
                               Độ khó: {counter.difficulty}
                             </span>
                           )}
-                          <span className="flex items-center gap-1 text-amber-400 font-medium">
-                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                            {counter.rating?.toFixed(1) || '5.0'} ({counter.ratingCount || 1})
-                          </span>
-                          {counter.author && (
-                            <span className="text-slate-400">
-                              Tác giả: <strong className="text-slate-300">{counter.author}</strong>
-                            </span>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -645,27 +612,17 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
                   {/* Expanded Strategy Body */}
                   {isExpanded && (
                     <div className="pt-3 border-t border-slate-800/80 bg-slate-950/40 -mx-5 -mb-5 p-5 rounded-b-2xl space-y-3 animate-in fade-in duration-150 text-xs">
-                      {counter.turnOrder && (
-                        <div className="flex items-center gap-2 text-teal-300 font-semibold">
-                          <Zap className="w-4 h-4 text-teal-400 shrink-0" />
-                          <span>Thứ tự lượt đi (Turn Order):</span>
-                          <span className="px-2.5 py-0.5 rounded bg-teal-950 border border-teal-800/80 text-teal-200 font-mono">
-                            {counter.turnOrder}
-                          </span>
-                        </div>
-                      )}
-
                       <div className="space-y-1.5">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <strong className="text-slate-300 block font-semibold">
-                            Hướng dẫn cách đánh & Khắc chế:
+                            Chiến thuật đánh & Yêu cầu chỉ số từng Pet:
                           </strong>
                           <button
                             type="button"
                             onClick={() => handleAIGenerateForCounter(counter)}
                             disabled={aiLoadingCounterId === counter.id}
                             className="flex items-center gap-1.5 px-2.5 py-1 bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 rounded-lg text-[11px] font-bold transition-all border border-teal-500/30 cursor-pointer disabled:opacity-60"
-                            title="Tải chiến thuật và thứ tự đi phân tích bởi Gemini AI"
+                            title="Tải chiến thuật và yêu cầu chỉ số phân tích bởi Gemini AI"
                           >
                             {aiLoadingCounterId === counter.id ? (
                               <>
@@ -680,7 +637,7 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
                             )}
                           </button>
                         </div>
-                        <p className="text-slate-400 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800 whitespace-pre-line">
+                        <p className="text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800 whitespace-pre-line font-sans">
                           {counter.strategy}
                         </p>
                       </div>
@@ -692,15 +649,6 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
                             <CheckCircle className="w-3.5 h-3.5" /> Đã kiểm chứng tỉ lệ thắng cao
                           </span>
                         </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleRateCounter(counter.id)}
-                          className="flex items-center gap-1 px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-teal-300 hover:text-teal-200 border border-teal-500/30 rounded-lg font-medium transition-colors cursor-pointer"
-                        >
-                          <ThumbsUp className="w-3 h-3" />
-                          <span>Hữu ích ({counter.ratingCount || 1})</span>
-                        </button>
                       </div>
                     </div>
                   )}
@@ -773,27 +721,17 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
                     {/* Expanded Strategy Body */}
                     {isExpanded && (
                       <div className="pt-3 border-t border-slate-800/80 bg-slate-950/40 -mx-5 -mb-5 p-5 rounded-b-2xl space-y-3 animate-in fade-in duration-150 text-xs">
-                        {counter.turnOrder && (
-                          <div className="flex items-center gap-2 text-teal-300 font-semibold">
-                            <Zap className="w-4 h-4 text-teal-400 shrink-0" />
-                            <span>Thứ tự lượt đi (Turn Order):</span>
-                            <span className="px-2.5 py-0.5 rounded bg-teal-950 border border-teal-800/80 text-teal-200 font-mono">
-                              {counter.turnOrder}
-                            </span>
-                          </div>
-                        )}
-
                         <div className="space-y-1.5">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <strong className="text-slate-300 block font-semibold">
-                              Hướng dẫn cách đánh & Khắc chế:
+                              Chiến thuật đánh & Yêu cầu chỉ số từng Pet:
                             </strong>
                             <button
                               type="button"
                               onClick={() => handleAIGenerateForCounter(counter)}
                               disabled={aiLoadingCounterId === counter.id}
                               className="flex items-center gap-1.5 px-2.5 py-1 bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 rounded-lg text-[11px] font-bold transition-all border border-teal-500/30 cursor-pointer disabled:opacity-60"
-                              title="Tải chiến thuật và thứ tự đi phân tích bởi Gemini AI"
+                              title="Tải chiến thuật và yêu cầu chỉ số phân tích bởi Gemini AI"
                             >
                               {aiLoadingCounterId === counter.id ? (
                                 <>
@@ -808,7 +746,7 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
                               )}
                             </button>
                           </div>
-                          <p className="text-slate-400 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800 whitespace-pre-line">
+                          <p className="text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800 whitespace-pre-line font-sans">
                             {counter.strategy}
                           </p>
                         </div>
