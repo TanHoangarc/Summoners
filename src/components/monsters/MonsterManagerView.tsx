@@ -17,6 +17,7 @@ import {
 import { ElementType, Monster, MonsterRole } from '../../types';
 import { ELEMENT_COLORS, ROLE_LABELS } from '../../utils/monsterHelpers';
 import { MonsterAvatar } from '../common/MonsterAvatar';
+import { sortMonstersByPickFrequency } from '../../utils/monsterPickStats';
 
 interface MonsterManagerViewProps {
   monsters: Monster[];
@@ -101,7 +102,7 @@ export const MonsterManagerView: React.FC<MonsterManagerViewProps> = ({
   }, [duplicateMap]);
 
   const filteredMonsters = useMemo(() => {
-    return monsters.filter((m) => {
+    const list = monsters.filter((m) => {
       const term = searchTerm.toLowerCase().trim();
       const matchSearch =
         !term ||
@@ -117,6 +118,8 @@ export const MonsterManagerView: React.FC<MonsterManagerViewProps> = ({
 
       return matchSearch && matchElement && matchStars && matchRole && matchDuplicates;
     });
+
+    return sortMonstersByPickFrequency(list);
   }, [monsters, searchTerm, selectedElement, selectedStars, selectedRole, onlyDuplicates, duplicateMonsterIds]);
 
   return (

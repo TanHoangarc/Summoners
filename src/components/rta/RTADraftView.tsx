@@ -21,6 +21,7 @@ import { MonsterAvatar } from '../common/MonsterAvatar';
 import { MonsterPickerModal } from '../common/MonsterPickerModal';
 import { QuickPickSuggestions } from './QuickPickSuggestions';
 import { KillOrderPanel } from './KillOrderPanel';
+import { recordMonsterPick } from '../../utils/monsterPickStats';
 import {
   computeRTAAutoSuggestions,
   AutoSuggestionState,
@@ -452,6 +453,8 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
 
   // Quick pick monster handler from suggestions panel
   const handleQuickPickMonster = (monsterId: string) => {
+    recordMonsterPick(monsterId);
+
     // If user has actively selected a slot in Team Tôi
     if (selectedSlotRef && selectedSlotRef.side === 'mine') {
       const idx = selectedSlotRef.index;
@@ -479,10 +482,26 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     showToast('Team Tôi đã đủ 5 quái thú. Hãy nhấp chọn 1 vị trí trên bàn cờ để thay thế!');
   };
 
+  // Handle pick monster directly into a chosen slot of Team Tôi (từ tip số vị trí)
+  const handlePickMonsterToSlot = (monsterId: string, slotIndex: number) => {
+    if (slotIndex < 0 || slotIndex >= myTeam.length) return;
+    recordMonsterPick(monsterId);
+    setMyTeam((prev) => {
+      const next = [...prev];
+      next[slotIndex] = { ...next[slotIndex], monsterId };
+      return next;
+    });
+    setSelectedSlotRef({ side: 'mine', index: slotIndex });
+  };
+
   // Handle monster selection from picker modal
   const handleSelectMonster = (monsterId: string | null) => {
     if (!activePickerSlot) return;
     const { side, index } = activePickerSlot;
+
+    if (monsterId) {
+      recordMonsterPick(monsterId);
+    }
 
     if (side === 'mine') {
       setMyTeam((prev) => {
@@ -763,6 +782,7 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
             enemyTeam={enemyTeam}
             selectedSlotRef={selectedSlotRef}
             onPickMonster={handleQuickPickMonster}
+            onPickMonsterToSlot={handlePickMonsterToSlot}
             onOpenAddMonster={onOpenAddMonster}
             onShowToast={showToast}
             favoriteIds={favoriteIds}
@@ -1442,6 +1462,9 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
           isOpen={Boolean(activePickerSlot)}
           onClose={() => setActivePickerSlot(null)}
           onSelectMonster={handleSelectMonster}
+          onSelectMonsterToSlot={handlePickMonsterToSlot}
+          myTeam={myTeam}
+          activePickerSlot={activePickerSlot}
           allMonsters={allMonsters}
           currentMonsterId={
             activePickerSlot.side === 'mine'
@@ -1453,6 +1476,7 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
             activePickerSlot.side === 'mine' ? 'Team Trái' : 'Team Phải'
           } (Vị trí #${(activePickerSlot.side === 'mine' ? myTeam : enemyTeam)[activePickerSlot.index].pickOrder})`}
           onOpenAddModal={onOpenAddMonster}
+          mode="rta"
         />
       )}
     </div>

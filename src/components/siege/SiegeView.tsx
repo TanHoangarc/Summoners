@@ -19,6 +19,7 @@ import {
 import { Monster, SiegeCounterStrategy, SavedSiegeDefense } from '../../types';
 import { DEFAULT_SIEGE_COUNTERS, DRAFT_COUNTER_IDS } from '../../data/defaultCounters';
 import { getMonsterById } from '../../utils/monsterHelpers';
+import { recordMonsterPick } from '../../utils/monsterPickStats';
 import { MonsterAvatar } from '../common/MonsterAvatar';
 import { MonsterPickerModal } from '../common/MonsterPickerModal';
 import { SaveDefenseModal } from './SaveDefenseModal';
@@ -627,6 +628,9 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
           isOpen={activeSlotIndex !== null}
           onClose={() => setActiveSlotIndex(null)}
           onSelectMonster={(monsterId) => {
+            if (monsterId) {
+              recordMonsterPick(monsterId);
+            }
             setDefenseIds((prev) => {
               const next = [...prev] as [string | null, string | null, string | null];
               next[activeSlotIndex] = monsterId;
@@ -637,6 +641,7 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
           currentMonsterId={defenseIds[activeSlotIndex]}
           title={`Chọn Pet Phòng Thủ Địch - Vị Trí ${activeSlotIndex + 1}`}
           onOpenAddModal={onOpenAddMonster}
+          mode="siege"
         />
       )}
 

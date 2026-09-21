@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Monster, SiegeCounterStrategy } from '../../types';
 import { getMonsterById } from '../../utils/monsterHelpers';
+import { recordMonsterPick } from '../../utils/monsterPickStats';
 import { MonsterAvatar } from '../common/MonsterAvatar';
 import { MonsterPickerModal } from '../common/MonsterPickerModal';
 import { fetchAICounterStrategy } from '../../lib/aiStrategyService';
@@ -1040,6 +1041,9 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
           isOpen={activeSlotIndex !== null}
           onClose={() => setActiveSlotIndex(null)}
           onSelectMonster={(monsterId) => {
+            if (monsterId) {
+              recordMonsterPick(monsterId);
+            }
             const oldMon = getMonsterById(allMonsters, counterSlots[activeSlotIndex]);
             const newMon = getMonsterById(allMonsters, monsterId);
             const next = [...counterSlots] as [string | null, string | null, string | null];
@@ -1062,6 +1066,7 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
           currentMonsterId={counterSlots[activeSlotIndex]}
           title={`Chọn Quái Thú Counter - Vị trí ${activeSlotIndex + 1}`}
           onOpenAddModal={onOpenAddMonster}
+          mode="siege"
         />
       )}
 

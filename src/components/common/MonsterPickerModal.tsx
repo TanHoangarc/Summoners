@@ -1,8 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { Search, X, Trash2, Plus, Sparkles, Filter } from 'lucide-react';
-import { ElementType, Monster, MonsterRole } from '../../types';
+import { ElementType, Monster, MonsterRole, RTASlot } from '../../types';
 import { ELEMENT_COLORS, ROLE_LABELS } from '../../utils/monsterHelpers';
 import { MonsterAvatar } from './MonsterAvatar';
+import { QuickTeamSlotTip } from './QuickTeamSlotTip';
+import { sortMonstersByPickFrequency, recordMonsterPick } from '../../utils/monsterPickStats';
 
 interface MonsterPickerModalProps {
   isOpen: boolean;
@@ -13,6 +15,10 @@ interface MonsterPickerModalProps {
   excludedMonsterIds?: string[]; // IDs already picked elsewhere
   title?: string;
   onOpenAddModal?: () => void;
+  myTeam?: RTASlot[];
+  activePickerSlot?: { side: 'mine' | 'enemy'; index: number } | null;
+  onSelectMonsterToSlot?: (monsterId: string, slotIndex: number) => void;
+  mode?: 'all' | 'rta' | 'siege';
 }
 
 export const MonsterPickerModal: React.FC<MonsterPickerModalProps> = ({
@@ -24,14 +30,40 @@ export const MonsterPickerModal: React.FC<MonsterPickerModalProps> = ({
   excludedMonsterIds = [],
   title = 'Chọn Pet (Monster)',
   onOpenAddModal,
+  myTeam,
+  activePickerSlot,
+  onSelectMonsterToSlot,
+  mode,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedElement, setSelectedElement] = useState<ElementType | 'all'>('all');
   const [selectedStars, setSelectedStars] = useState<number | 'all'>('all');
   const [selectedRole, setSelectedRole] = useState<MonsterRole | 'all'>('all');
+  const [tipData, setTipData] = useState<{
+    monster: Monster;
+    anchorRect: DOMRect;
+  } | null>(null);
+
+  // Xác định ngữ cảnh tính điểm ngầm (RTA, Siege hoặc Cả hai)
+  const effectiveMode = useMemo((): 'all' | 'rta' | 'siege' => {
+    if (mode) return mode;
+    const lowerTitle = title.toLowerCase();
+    if (lowerTitle.includes('rta') || (myTeam && myTeam.length > 0)) {
+      return 'rta';
+    }
+    if (
+      lowerTitle.includes('defense') ||
+      lowerTitle.includes('counter') ||
+      lowerTitle.includes('phòng thủ') ||
+      lowerTitle.includes('công thành')
+    ) {
+      return 'siege';
+    }
+    return 'all';
+  }, [mode, title, myTeam]);
 
   const filteredMonsters = useMemo(() => {
-    return allMonsters.filter((m) => {
+    const list = allMonsters.filter((m) => {
       // Search term
       const term = searchTerm.toLowerCase().trim();
       const matchSearch =
@@ -51,7 +83,45 @@ export const MonsterPickerModal: React.FC<MonsterPickerModalProps> = ({
 
       return matchSearch && matchElement && matchStars && matchRole;
     });
-  }, [allMonsters, searchTerm, selectedElement, selectedStars, selectedRole]);
+
+    // Danh sách pet tại mỗi hệ sẽ sắp xếp hiển thị pet được chọn nhiều nhất lên trên
+    // theo thuật toán tính điểm ngầm cả RTA và Siege (không hiển thị số điểm ra UI)
+    return sortMonstersByPickFrequency(list, { mode: effectiveMode });
+  }, [allMonsters, searchTerm, selectedElement, selectedStars, selectedRole, effectiveMode]);
+
+  const handleMonsterClick = (e: React.MouseEvent, monster: Monster, isExcluded: boolean) => {
+    if (isExcluded) return;
+
+    // Nếu có myTeam và không phải đang chọn cho team địch -> Hiện tip nhỏ chọn số vị trí Team Tôi
+    if (myTeam && myTeam.length > 0 && activePickerSlot?.side !== 'enemy') {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      setTipData({
+        monster,
+        anchorRect: rect,
+      });
+      return;
+    }
+
+    // Trường hợp thông thường (pick trực tiếp hoặc pick cho team địch)
+    recordMonsterPick(monster.id);
+    onSelectMonster(monster.id);
+    onClose();
+  };
+
+  const handleSelectSlotFromTip = (slotIndex: number, pickOrder: number) => {
+    if (!tipData) return;
+    const monsterId = tipData.monster.id;
+    recordMonsterPick(monsterId);
+
+    if (onSelectMonsterToSlot) {
+      onSelectMonsterToSlot(monsterId, slotIndex);
+    } else {
+      onSelectMonster(monsterId);
+    }
+
+    setTipData(null);
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -247,11 +317,7 @@ export const MonsterPickerModal: React.FC<MonsterPickerModalProps> = ({
                 return (
                   <div
                     key={monster.id}
-                    onClick={() => {
-                      if (isExcluded) return;
-                      onSelectMonster(monster.id);
-                      onClose();
-                    }}
+                    onClick={(e) => handleMonsterClick(e, monster, isExcluded)}
                     className={`relative p-1.5 sm:p-2 rounded-xl flex flex-col items-center gap-1 transition-all cursor-pointer border ${
                       isSelected
                         ? 'bg-teal-950/70 border-teal-400 ring-2 ring-teal-400/50 shadow-lg'
@@ -299,7 +365,9 @@ export const MonsterPickerModal: React.FC<MonsterPickerModalProps> = ({
         {/* Footer */}
         <div className="flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 border-t border-slate-800 bg-slate-950/80 text-xs text-slate-400 shrink-0">
           <p className="text-[11px] sm:text-xs text-slate-400 truncate pr-2">
-            💡 Nhấp vào quái thú để chọn vào vị trí đội hình
+            {myTeam && myTeam.length > 0 && activePickerSlot?.side !== 'enemy'
+              ? '💡 Nhấp vào pet để hiện tip các số vị trí Team Tôi thêm vào nhanh'
+              : '💡 Nhấp vào quái thú để chọn vào vị trí đội hình'}
           </p>
           <button
             type="button"
@@ -311,6 +379,19 @@ export const MonsterPickerModal: React.FC<MonsterPickerModalProps> = ({
         </div>
 
       </div>
+
+      {/* Tip nhỏ chọn số vị trí Team Tôi */}
+      {tipData && myTeam && (
+        <QuickTeamSlotTip
+          monster={tipData.monster}
+          myTeam={myTeam}
+          allMonsters={allMonsters}
+          anchorRect={tipData.anchorRect}
+          onSelectSlot={handleSelectSlotFromTip}
+          onClose={() => setTipData(null)}
+          activeSlotIndex={activePickerSlot?.side === 'mine' ? activePickerSlot.index : null}
+        />
+      )}
     </div>
   );
 };

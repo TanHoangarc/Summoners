@@ -11,6 +11,8 @@ import { Monster, RTASlot } from '../../types';
 import { getMonsterById } from '../../utils/monsterHelpers';
 import { MonsterAvatar } from '../common/MonsterAvatar';
 import { MonsterPickerModal } from '../common/MonsterPickerModal';
+import { QuickTeamSlotTip } from '../common/QuickTeamSlotTip';
+import { sortMonstersByPickFrequency, recordMonsterPick } from '../../utils/monsterPickStats';
 
 interface QuickPickSuggestionsProps {
   allMonsters: Monster[];
@@ -18,6 +20,7 @@ interface QuickPickSuggestionsProps {
   enemyTeam: RTASlot[];
   selectedSlotRef: { side: 'mine' | 'enemy'; index: number } | null;
   onPickMonster: (monsterId: string) => void;
+  onPickMonsterToSlot?: (monsterId: string, slotIndex: number) => void;
   onOpenAddMonster: () => void;
   onShowToast: (msg: string) => void;
   favoriteIds?: string[];
@@ -32,6 +35,7 @@ export const QuickPickSuggestions: React.FC<QuickPickSuggestionsProps> = ({
   enemyTeam,
   selectedSlotRef,
   onPickMonster,
+  onPickMonsterToSlot,
   onOpenAddMonster,
   onShowToast,
   favoriteIds: externalFavorites,
@@ -61,6 +65,10 @@ export const QuickPickSuggestions: React.FC<QuickPickSuggestionsProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [isManageMode, setIsManageMode] = useState(false);
   const [isAddPickerOpen, setIsAddPickerOpen] = useState(false);
+  const [activeTip, setActiveTip] = useState<{
+    monster: Monster;
+    anchorRect: DOMRect;
+  } | null>(null);
 
   // Sync to storage
   useEffect(() => {
@@ -79,11 +87,12 @@ export const QuickPickSuggestions: React.FC<QuickPickSuggestionsProps> = ({
     return set;
   }, [myTeam, enemyTeam]);
 
-  // Monsters list for favorites
+  // Monsters list for favorites - Tự động sắp xếp các pet được chọn nhiều nhất lên trên
   const favoriteMonsters = useMemo(() => {
-    return favoriteIds
+    const list = favoriteIds
       .map((id) => getMonsterById(allMonsters, id))
       .filter((m): m is Monster => Boolean(m));
+    return sortMonstersByPickFrequency(list, { mode: 'rta' });
   }, [favoriteIds, allMonsters]);
 
   // Filtered monsters by name only
@@ -119,7 +128,7 @@ export const QuickPickSuggestions: React.FC<QuickPickSuggestionsProps> = ({
     onShowToast('Đã xóa tất cả pet trong danh sách');
   };
 
-  const handleQuickClick = (monster: Monster) => {
+  const handleQuickClick = (e: React.MouseEvent, monster: Monster) => {
     if (isManageMode) return;
 
     if (pickedIdsSet.has(monster.id)) {
@@ -127,7 +136,27 @@ export const QuickPickSuggestions: React.FC<QuickPickSuggestionsProps> = ({
       return;
     }
 
-    onPickMonster(monster.id);
+    // Hiển thị tip nhỏ các số ở team tôi để thêm vào nhanh vị trí
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setActiveTip({
+      monster,
+      anchorRect: rect,
+    });
+  };
+
+  const handleSelectSlotFromTip = (slotIndex: number, pickOrder: number) => {
+    if (!activeTip) return;
+    const { monster } = activeTip;
+    recordMonsterPick(monster.id);
+
+    if (onPickMonsterToSlot) {
+      onPickMonsterToSlot(monster.id, slotIndex);
+    } else {
+      onPickMonster(monster.id);
+    }
+
+    onShowToast(`Đã thêm ${monster.name} vào vị trí #${pickOrder} Team Tôi!`);
+    setActiveTip(null);
   };
 
   return (
@@ -216,7 +245,7 @@ export const QuickPickSuggestions: React.FC<QuickPickSuggestionsProps> = ({
               return (
                 <div
                   key={monster.id}
-                  onClick={() => handleQuickClick(monster)}
+                  onClick={(e) => handleQuickClick(e, monster)}
                   className={`relative group rounded-lg p-1 flex flex-col items-center justify-center transition-all ${
                     isPicked
                       ? 'opacity-40 pointer-events-none'
@@ -274,6 +303,19 @@ export const QuickPickSuggestions: React.FC<QuickPickSuggestionsProps> = ({
         </div>
       )}
 
+      {/* Quick Team Slot Tip Popover */}
+      {activeTip && (
+        <QuickTeamSlotTip
+          monster={activeTip.monster}
+          myTeam={myTeam}
+          allMonsters={allMonsters}
+          anchorRect={activeTip.anchorRect}
+          onSelectSlot={handleSelectSlotFromTip}
+          onClose={() => setActiveTip(null)}
+          activeSlotIndex={selectedSlotRef?.side === 'mine' ? selectedSlotRef.index : null}
+        />
+      )}
+
       {/* Monster Picker Modal for adding new favorites */}
       {isAddPickerOpen && (
         <MonsterPickerModal
@@ -284,6 +326,7 @@ export const QuickPickSuggestions: React.FC<QuickPickSuggestionsProps> = ({
           currentMonsterId={null}
           title="Thêm Quái Thú Vào Danh Sách Hay Pick"
           onOpenAddModal={onOpenAddMonster}
+          mode="rta"
         />
       )}
     </div>
