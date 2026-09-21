@@ -14,6 +14,7 @@ import {
   Zap,
   Sparkles,
   Cloud,
+  ListOrdered,
 } from 'lucide-react';
 import { Monster, RTAMatchRecord, RTASlot } from '../../types';
 import { getMonsterById } from '../../utils/monsterHelpers';
@@ -521,6 +522,85 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     }
   };
 
+  // Xử lý chọn nhiều quái thú cho Team Địch và gán vào đúng theo thứ tự chọn
+  const handleSelectMultipleMonsters = (monsterIds: string[]) => {
+    if (!monsterIds || monsterIds.length === 0) return;
+
+    // Ghi nhận tần suất pick
+    monsterIds.forEach((id) => recordMonsterPick(id));
+
+    setEnemyTeam((prev) => {
+      const next = [...prev];
+      let idIndex = 0;
+
+      // Xác định vị trí bắt đầu gán
+      let startIndex = activePickerSlot?.side === 'enemy' ? activePickerSlot.index : -1;
+      if (startIndex < 0 || startIndex >= next.length) {
+        startIndex = next.findIndex((s) => !s.monsterId);
+        if (startIndex === -1) startIndex = 0;
+      }
+
+      // 1. Gán vào vị trí xuất phát
+      if (idIndex < monsterIds.length) {
+        next[startIndex] = { ...next[startIndex], monsterId: monsterIds[idIndex] };
+        idIndex++;
+      }
+
+      // 2. Điền lần lượt vào các slot TRỐNG tiếp theo sau startIndex
+      for (let i = startIndex + 1; i < next.length && idIndex < monsterIds.length; i++) {
+        if (!next[i].monsterId) {
+          next[i] = { ...next[i], monsterId: monsterIds[idIndex] };
+          idIndex++;
+        }
+      }
+
+      // 3. Nếu vẫn còn pet, điền vào các slot TRỐNG phía trước startIndex
+      for (let i = 0; i < startIndex && idIndex < monsterIds.length; i++) {
+        if (!next[i].monsterId) {
+          next[i] = { ...next[i], monsterId: monsterIds[idIndex] };
+          idIndex++;
+        }
+      }
+
+      // 4. Nếu vẫn còn pet (hết slot trống), ghi đè lần lượt các slot từ startIndex + 1 trở đi
+      for (let i = startIndex + 1; i < next.length && idIndex < monsterIds.length; i++) {
+        next[i] = { ...next[i], monsterId: monsterIds[idIndex] };
+        idIndex++;
+      }
+
+      // 5. Nếu vẫn còn, ghi đè các slot trước startIndex
+      for (let i = 0; i < startIndex && idIndex < monsterIds.length; i++) {
+        next[i] = { ...next[i], monsterId: monsterIds[idIndex] };
+        idIndex++;
+      }
+
+      return next;
+    });
+
+    // Tự động bổ sung vào thứ tự cần tiêu diệt (kill order) theo đúng thứ tự pick
+    setKillOrder((prev) => {
+      const updated = [...prev];
+      monsterIds.forEach((id) => {
+        if (!updated.includes(id)) {
+          updated.push(id);
+        }
+      });
+      return updated;
+    });
+
+    showToast(`Đã gán ${monsterIds.length} quái thú vào Team Địch theo đúng thứ tự chọn!`);
+    setActivePickerSlot(null);
+  };
+
+  // Mở nhanh modal chọn nhiều pet cho Team Địch
+  const handleOpenEnemyBatchPicker = () => {
+    const firstEmptyIdx = enemyTeam.findIndex((s) => !s.monsterId);
+    setActivePickerSlot({
+      side: 'enemy',
+      index: firstEmptyIdx !== -1 ? firstEmptyIdx : 0,
+    });
+  };
+
   // Toggle Ban on a slot (bans 1 monster per team)
   const toggleBan = (side: 'mine' | 'enemy', index: number) => {
     if (side === 'mine') {
@@ -874,7 +954,16 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleOpenEnemyBatchPicker}
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 rounded-xl text-xs font-bold border border-amber-500/40 transition-all cursor-pointer hover:border-amber-400 active:scale-95"
+                title="Chọn nhiều pet cho Team Địch và tự động gán vào đúng theo thứ tự chọn"
+              >
+                <ListOrdered className="w-3.5 h-3.5 text-amber-400" />
+                <span>Chọn nhiều Pet Địch</span>
+              </button>
               <button
                 type="button"
                 onClick={handleResetDraft}
@@ -1462,8 +1551,10 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
           isOpen={Boolean(activePickerSlot)}
           onClose={() => setActivePickerSlot(null)}
           onSelectMonster={handleSelectMonster}
+          onSelectMultipleMonsters={handleSelectMultipleMonsters}
           onSelectMonsterToSlot={handlePickMonsterToSlot}
           myTeam={myTeam}
+          enemyTeam={enemyTeam}
           activePickerSlot={activePickerSlot}
           allMonsters={allMonsters}
           currentMonsterId={
@@ -1472,11 +1563,14 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
               : enemyTeam[activePickerSlot.index].monsterId
           }
           excludedMonsterIds={allPickedIds}
-          title={`Chọn Pet cho ${
-            activePickerSlot.side === 'mine' ? 'Team Trái' : 'Team Phải'
-          } (Vị trí #${(activePickerSlot.side === 'mine' ? myTeam : enemyTeam)[activePickerSlot.index].pickOrder})`}
+          title={
+            activePickerSlot.side === 'mine'
+              ? `Chọn Pet Team Tôi (Vị trí #${myTeam[activePickerSlot.index].pickOrder})`
+              : `Chọn Pet Team Địch (Vị trí #${enemyTeam[activePickerSlot.index].pickOrder})`
+          }
           onOpenAddModal={onOpenAddMonster}
           mode="rta"
+          allowMultiSelect={activePickerSlot.side === 'enemy'}
         />
       )}
     </div>
