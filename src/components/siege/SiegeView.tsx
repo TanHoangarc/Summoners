@@ -15,6 +15,7 @@ import {
   Pencil,
   Trash2,
   Loader2,
+  AlertTriangle,
 } from 'lucide-react';
 import { Monster, SiegeCounterStrategy, SavedSiegeDefense } from '../../types';
 import { DEFAULT_SIEGE_COUNTERS, DRAFT_COUNTER_IDS } from '../../data/defaultCounters';
@@ -33,6 +34,7 @@ import {
   DEFAULT_SAVED_DEFENSES,
   STORAGE_KEY_SIEGE_DEFENSES,
   seedDefaultDefensesToFirestore,
+  findDuplicateSiegeDefense,
 } from '../../lib/siegeDefenseService';
 import {
   subscribeToSiegeCounters,
@@ -173,8 +175,18 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
 
   const canSaveCurrent = Boolean(defenseIds[0] && defenseIds[1] && defenseIds[2]);
 
+  // Check if current 3 defense monsters already exist in savedDefenses (any order)
+  const duplicateDefense = useMemo(() => {
+    return findDuplicateSiegeDefense(defenseIds, savedDefenses);
+  }, [defenseIds, savedDefenses]);
+
   const handleOpenSaveModal = () => {
     if (!canSaveCurrent) return;
+    if (duplicateDefense) {
+      setToastMessage(
+        `⚠️ Đội hình gồm 3 quái thú này đã có trong danh sách: "${duplicateDefense.name}". Vui lòng không thêm lặp lại!`
+      );
+    }
     setEditingDefense(null);
     setIsSaveDefenseModalOpen(true);
   };
@@ -356,20 +368,32 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleOpenSaveModal}
-              disabled={!canSaveCurrent}
-              title={canSaveCurrent ? 'Lưu đội hình này vào danh sách phòng thủ' : 'Hãy chọn đủ 3 quái thú để lưu'}
-              className={`flex items-center gap-1.5 text-xs px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
-                canSaveCurrent
-                  ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-md'
-                  : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-60'
-              }`}
-            >
-              <BookmarkCheck className="w-3.5 h-3.5" />
-              Lưu Đội Hình Này
-            </button>
+            {duplicateDefense ? (
+              <button
+                type="button"
+                onClick={handleOpenSaveModal}
+                title={`Đội hình này đã tồn tại dưới tên "${duplicateDefense.name}" (không phân biệt thứ tự). Nhấp để xem chi tiết.`}
+                className="flex items-center gap-1.5 text-xs px-3.5 py-1.5 rounded-xl font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-all cursor-pointer shadow-sm"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                Đã Tồn Tại (Không Thêm Trùng)
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleOpenSaveModal}
+                disabled={!canSaveCurrent}
+                title={canSaveCurrent ? 'Lưu đội hình này vào danh sách phòng thủ' : 'Hãy chọn đủ 3 quái thú để lưu'}
+                className={`flex items-center gap-1.5 text-xs px-3.5 py-1.5 rounded-xl font-bold transition-all cursor-pointer ${
+                  canSaveCurrent
+                    ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-md'
+                    : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-60'
+                }`}
+              >
+                <BookmarkCheck className="w-3.5 h-3.5" />
+                Lưu Đội Hình Này
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setDefenseIds([null, null, null])}
@@ -380,6 +404,43 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
             </button>
           </div>
         </div>
+
+        {/* DUPLICATE DEFENSE WARNING NOTIFICATION */}
+        {duplicateDefense && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 bg-amber-500/10 border border-amber-500/35 rounded-2xl animate-in fade-in duration-200">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl shrink-0 mt-0.5 sm:mt-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-xs font-black text-amber-200 flex items-center gap-1.5 flex-wrap">
+                  <span>ĐỘI HÌNH NÀY ĐÃ TỒN TẠI:</span>
+                  <span className="text-white underline decoration-amber-400/60 underline-offset-2">
+                    "{duplicateDefense.name}"
+                  </span>
+                  <span className="text-amber-400/90 font-normal text-[11px]">
+                    (không phân biệt thứ tự chọn quái)
+                  </span>
+                </div>
+                <p className="text-[11.5px] text-slate-300 mt-0.5 leading-relaxed">
+                  3 quái thú này đã có sẵn trong danh sách phòng thủ Siege. Hệ thống thông báo để bạn không thêm lặp lại.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => handleEditDefense(duplicateDefense)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl transition-all cursor-pointer shadow-sm"
+                title="Chỉnh sửa đội hình đã tồn tại"
+              >
+                <Pencil className="w-3 h-3" />
+                Sửa Đội Hình Này
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-6">
           {/* 3 Pet Avatars (Clean avatar squares with hover tooltip) */}
@@ -631,11 +692,19 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
             if (monsterId) {
               recordMonsterPick(monsterId);
             }
-            setDefenseIds((prev) => {
-              const next = [...prev] as [string | null, string | null, string | null];
-              next[activeSlotIndex] = monsterId;
-              return next;
-            });
+            const next = [...defenseIds] as [string | null, string | null, string | null];
+            next[activeSlotIndex] = monsterId;
+            setDefenseIds(next);
+
+            // Instant duplicate check when 3 slots are filled
+            if (next[0] && next[1] && next[2]) {
+              const dup = findDuplicateSiegeDefense(next, savedDefenses);
+              if (dup) {
+                setToastMessage(
+                  `⚠️ Đội hình 3 quái thú này đã có trong danh sách: "${dup.name}" (không phân biệt thứ tự)!`
+                );
+              }
+            }
           }}
           allMonsters={allMonsters}
           currentMonsterId={defenseIds[activeSlotIndex]}
@@ -671,6 +740,10 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
         allMonsters={allMonsters}
         onSave={handleSaveDefense}
         editingDefense={editingDefense}
+        savedDefenses={savedDefenses}
+        onEditExisting={(existing) => {
+          setEditingDefense(existing);
+        }}
       />
     </div>
   );

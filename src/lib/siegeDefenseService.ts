@@ -125,3 +125,56 @@ export async function seedDefaultDefensesToFirestore(): Promise<number> {
   await batch.commit();
   return count;
 }
+
+/**
+ * Helper to check if two sets of 3 monster IDs are identical, regardless of order.
+ */
+export function isSameMonsterTeam(
+  teamA: (string | null | undefined)[],
+  teamB: (string | null | undefined)[]
+): boolean {
+  if (!teamA || !teamB || teamA.length < 3 || teamB.length < 3) return false;
+  const validA = teamA.filter(Boolean) as string[];
+  const validB = teamB.filter(Boolean) as string[];
+  if (validA.length !== 3 || validB.length !== 3) return false;
+
+  const sortedA = [...validA].sort();
+  const sortedB = [...validB].sort();
+
+  return (
+    sortedA[0] === sortedB[0] &&
+    sortedA[1] === sortedB[1] &&
+    sortedA[2] === sortedB[2]
+  );
+}
+
+/**
+ * Check if 3 monster IDs match any existing defense regardless of ordering
+ */
+export function findDuplicateSiegeDefense(
+  candidateMonsterIds: (string | null | undefined)[],
+  savedDefenses: SavedSiegeDefense[],
+  excludeDefenseId?: string | null
+): SavedSiegeDefense | null {
+  if (!candidateMonsterIds || candidateMonsterIds.length < 3) return null;
+  const validIds = candidateMonsterIds.filter(Boolean) as string[];
+  if (validIds.length !== 3) return null;
+
+  const sortedCandidates = [...validIds].sort();
+
+  for (const def of savedDefenses) {
+    if (excludeDefenseId && def.id === excludeDefenseId) continue;
+    if (!def.monsterIds || def.monsterIds.length < 3) continue;
+
+    const sortedDef = [...def.monsterIds].sort();
+    if (
+      sortedDef[0] === sortedCandidates[0] &&
+      sortedDef[1] === sortedCandidates[1] &&
+      sortedDef[2] === sortedCandidates[2]
+    ) {
+      return def;
+    }
+  }
+
+  return null;
+}

@@ -14,10 +14,12 @@ import {
   Columns3,
   Filter,
   Users,
+  AlertTriangle,
 } from 'lucide-react';
 import { Monster, SavedSiegeDefense, SiegeCounterStrategy } from '../../types';
 import { getMonsterById, ELEMENT_COLORS } from '../../utils/monsterHelpers';
 import { MonsterPickerModal } from '../common/MonsterPickerModal';
+import { isSameMonsterTeam, findDuplicateSiegeDefense } from '../../lib/siegeDefenseService';
 
 interface SavedDefensesListProps {
   savedDefenses: SavedSiegeDefense[];
@@ -114,6 +116,16 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
     );
   };
 
+  // Helper to check if defense contains the same 3 monsters regardless of order
+  const isDefensePermutationMatch = (def: SavedSiegeDefense) => {
+    return isSameMonsterTeam(activeDefenseIds, def.monsterIds);
+  };
+
+  // Active duplicate defense detected across savedDefenses (any order)
+  const activeDuplicateDefense = useMemo(() => {
+    return findDuplicateSiegeDefense(activeDefenseIds, savedDefenses);
+  }, [activeDefenseIds, savedDefenses]);
+
   // Helper to count known exact counters in database
   const getCountersCount = (monsterIds: [string, string, string]) => {
     return countersDatabase.filter((c) => {
@@ -177,7 +189,7 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
 
       // Filter Mode pills
       if (filterMode === 'active') {
-        return isDefenseActive(def);
+        return isDefenseActive(def) || isDefensePermutationMatch(def);
       }
       if (filterMode === 'with_counters') {
         return getCountersCount(def.monsterIds) > 0;
@@ -298,6 +310,7 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
     const m2 = getMonsterById(allMonsters, defense.monsterIds[1]);
     const m3 = getMonsterById(allMonsters, defense.monsterIds[2]);
     const active = isDefenseActive(defense);
+    const sameTeam = isDefensePermutationMatch(defense);
     const counterCount = getCountersCount(defense.monsterIds);
 
     return (
@@ -306,8 +319,17 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
         className={`group relative flex items-center justify-between gap-1.5 p-1.5 rounded-xl border transition-all ${
           active
             ? 'bg-slate-950 border-teal-500/90 ring-2 ring-teal-500/40 shadow-lg shadow-teal-500/10'
+            : sameTeam
+            ? 'bg-slate-950 border-amber-500/80 ring-2 ring-amber-500/40 shadow-lg shadow-amber-500/10'
             : 'bg-slate-950/90 hover:bg-slate-900 border-slate-800 hover:border-slate-700'
         }`}
+        title={
+          active
+            ? `Đang chọn chính xác: ${defense.name}`
+            : sameTeam
+            ? `Cùng 3 quái thú với Defense đang chọn (khác thứ tự): ${defense.name}`
+            : undefined
+        }
       >
         {/* 3 Monster Avatars side-by-side + Blue Search Button (EXACT MATCH with user screenshot) */}
         <div
@@ -449,24 +471,36 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={onOpenSaveCurrent}
-            disabled={!canSaveCurrent}
-            title={
-              canSaveCurrent
-                ? 'Lưu đội hình 3 quái thú hiện tại'
-                : 'Hãy chọn đủ 3 quái thú ở ô DEFENSE phía trên để lưu'
-            }
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black shadow-md transition-all cursor-pointer ${
-              canSaveCurrent
-                ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-teal-500/10'
-                : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-60'
-            }`}
-          >
-            <BookmarkCheck className="w-3.5 h-3.5" />
-            <span>Lưu Hiện Tại</span>
-          </button>
+          {activeDuplicateDefense ? (
+            <button
+              type="button"
+              onClick={onOpenSaveCurrent}
+              title={`Đội hình 3 quái thú này đã tồn tại trong danh sách: "${activeDuplicateDefense.name}" (không phân biệt thứ tự). Nhấp để xem thông báo hoặc sửa.`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black shadow-md transition-all cursor-pointer bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+              <span>Đã Có Trong DS</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenSaveCurrent}
+              disabled={!canSaveCurrent}
+              title={
+                canSaveCurrent
+                  ? 'Lưu đội hình 3 quái thú hiện tại'
+                  : 'Hãy chọn đủ 3 quái thú ở ô DEFENSE phía trên để lưu'
+              }
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black shadow-md transition-all cursor-pointer ${
+                canSaveCurrent
+                  ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 shadow-teal-500/10'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-60'
+              }`}
+            >
+              <BookmarkCheck className="w-3.5 h-3.5" />
+              <span>Lưu Hiện Tại</span>
+            </button>
+          )}
         </div>
       </div>
 

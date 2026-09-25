@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { X, BookmarkPlus, Award, FileText } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, BookmarkPlus, Award, FileText, AlertTriangle, Pencil } from 'lucide-react';
 import { Monster, SavedSiegeDefense } from '../../types';
 import { getMonsterById } from '../../utils/monsterHelpers';
 import { MonsterAvatar } from '../common/MonsterAvatar';
+import { findDuplicateSiegeDefense } from '../../lib/siegeDefenseService';
 
 interface SaveDefenseModalProps {
   isOpen: boolean;
@@ -11,6 +12,8 @@ interface SaveDefenseModalProps {
   allMonsters: Monster[];
   onSave: (defense: SavedSiegeDefense) => void;
   editingDefense?: SavedSiegeDefense | null;
+  savedDefenses: SavedSiegeDefense[];
+  onEditExisting?: (defense: SavedSiegeDefense) => void;
 }
 
 export const SaveDefenseModal: React.FC<SaveDefenseModalProps> = ({
@@ -20,6 +23,8 @@ export const SaveDefenseModal: React.FC<SaveDefenseModalProps> = ({
   allMonsters,
   onSave,
   editingDefense,
+  savedDefenses,
+  onEditExisting,
 }) => {
   // Determine monsters
   const currentMonsterIds: [string, string, string] = editingDefense
@@ -33,6 +38,15 @@ export const SaveDefenseModal: React.FC<SaveDefenseModalProps> = ({
   const m1 = getMonsterById(allMonsters, currentMonsterIds[0]);
   const m2 = getMonsterById(allMonsters, currentMonsterIds[1]);
   const m3 = getMonsterById(allMonsters, currentMonsterIds[2]);
+
+  // Check if current 3 monsters already exist in savedDefenses (regardless of order)
+  const duplicateDefense = useMemo(() => {
+    return findDuplicateSiegeDefense(
+      currentMonsterIds,
+      savedDefenses,
+      editingDefense ? editingDefense.id : null
+    );
+  }, [currentMonsterIds, savedDefenses, editingDefense]);
 
   const defaultName = editingDefense
     ? editingDefense.name
@@ -68,6 +82,14 @@ export const SaveDefenseModal: React.FC<SaveDefenseModalProps> = ({
 
     if (!currentMonsterIds[0] || !currentMonsterIds[1] || !currentMonsterIds[2]) {
       setError('Đội hình phải có đầy đủ 3 quái thú');
+      return;
+    }
+
+    // Prevent saving duplicates (regardless of order)
+    if (duplicateDefense) {
+      setError(
+        `Đội hình gồm 3 quái thú này đã tồn tại dưới tên "${duplicateDefense.name}" (không phân biệt thứ tự chọn quái). Vui lòng không thêm lặp lại!`
+      );
       return;
     }
 
@@ -116,6 +138,48 @@ export const SaveDefenseModal: React.FC<SaveDefenseModalProps> = ({
           {error && (
             <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 font-medium">
               {error}
+            </div>
+          )}
+
+          {/* DUPLICATE DEFENSE WARNING NOTICE */}
+          {duplicateDefense && (
+            <div className="p-4 bg-amber-500/10 border border-amber-500/40 rounded-2xl space-y-2.5 animate-in fade-in duration-200">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="text-xs font-black text-amber-300">
+                    Phát hiện đội hình 3 quái thú này đã tồn tại!
+                  </h4>
+                  <p className="text-[11.5px] text-slate-300 leading-relaxed">
+                    Bộ 3 quái thú này đã có sẵn trong danh sách phòng thủ dưới tên:{' '}
+                    <strong className="text-amber-200 font-bold">"{duplicateDefense.name}"</strong>{' '}
+                    <span className="text-slate-400 text-[11px]">
+                      (không phân biệt thứ tự sắp xếp quái thú).
+                    </span>
+                  </p>
+                  <p className="text-[11px] text-amber-400/90 font-medium">
+                    ⚠️ Hệ thống không cho phép thêm lặp lại để tránh trùng dữ liệu phòng thủ.
+                  </p>
+                </div>
+              </div>
+
+              {onEditExisting && (
+                <div className="pt-2 border-t border-amber-500/20 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] text-slate-400">
+                    Bạn muốn cập nhật ghi chú hoặc đổi Leader?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onEditExisting(duplicateDefense);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl transition-all cursor-pointer shadow-sm"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    Chuyển sang Chỉnh Sửa "{duplicateDefense.name}"
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -214,13 +278,25 @@ export const SaveDefenseModal: React.FC<SaveDefenseModalProps> = ({
             >
               Hủy
             </button>
-            <button
-              type="submit"
-              className="inline-flex items-center gap-2 px-5 py-2 bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all cursor-pointer"
-            >
-              <BookmarkPlus className="w-4 h-4" />
-              {editingDefense ? 'Lưu Thay Đổi' : 'Lưu Đội Hình'}
-            </button>
+            {duplicateDefense ? (
+              <button
+                type="button"
+                disabled
+                className="inline-flex items-center gap-2 px-5 py-2 bg-slate-800 text-amber-400/80 font-bold text-xs rounded-xl border border-amber-500/30 cursor-not-allowed opacity-80"
+                title="Đội hình 3 quái thú này đã tồn tại trong danh sách (không phân biệt thứ tự)"
+              >
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                Đã Tồn Tại (Không Lưu Trùng)
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="inline-flex items-center gap-2 px-5 py-2 bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs rounded-xl shadow-lg transition-all cursor-pointer"
+              >
+                <BookmarkPlus className="w-4 h-4" />
+                {editingDefense ? 'Lưu Thay Đổi' : 'Lưu Đội Hình'}
+              </button>
+            )}
           </div>
         </form>
       </div>
