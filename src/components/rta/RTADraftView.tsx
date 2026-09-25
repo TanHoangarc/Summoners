@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Swords,
   Ban,
@@ -15,13 +15,17 @@ import {
   Sparkles,
   Cloud,
   ListOrdered,
+  Bot,
 } from 'lucide-react';
-import { Monster, RTAMatchRecord, RTASlot } from '../../types';
+import { Monster, RTAMatchRecord, RTASlot, RTAAiCoachAnalysis, RTAAiRecommendation } from '../../types';
 import { getMonsterById } from '../../utils/monsterHelpers';
 import { MonsterAvatar } from '../common/MonsterAvatar';
 import { MonsterPickerModal } from '../common/MonsterPickerModal';
 import { QuickPickSuggestions } from './QuickPickSuggestions';
 import { KillOrderPanel } from './KillOrderPanel';
+import { RTAAiCoachBanner } from './RTAAiCoachBanner';
+import { fetchRTAAiCoachAnalysis, RTAAiRequestPayload } from '../../lib/rtaAiService';
+import { computeAiTurnSchedule } from '../../utils/rtaAiTurnScheduler';
 import { recordMonsterPick } from '../../utils/monsterPickStats';
 import {
   computeRTAAutoSuggestions,
@@ -204,8 +208,26 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     } catch {
       // ignore
     }
-    return true; // Mặc định BẬT để hỗ trợ người dùng ngay lập tức
+    return true; // Mặc định BẬT
   });
+
+  // Công tắc bật tắt chế độ AI Tuyển Thủ Top 1 RTA (Màu Tím = Bật, Xám = Tắt)
+  // Khi AI Bật thì Auto phải tắt đi ("với chế độ AI được bật thì auto tắt đi")
+  const [isAIMode, setIsAIMode] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('sw_rta_ai_mode');
+      if (saved !== null) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return false;
+  });
+
+  // Dữ liệu phân tích chiến thuật từ AI Tuyển Thủ Top 1 RTA
+  const [aiCoachAnalysis, setAiCoachAnalysis] = useState<RTAAiCoachAnalysis | null>(null);
+  const [isAILoading, setIsAILoading] = useState<boolean>(false);
+  // Danh sách quái thú người chơi không có / muốn đổi trong phiên draft hiện tại
+  const [aiExcludedMonsterIds, setAiExcludedMonsterIds] = useState<string[]>([]);
 
   // Đồng bộ danh sách Pet Tôi Hay Pick với QuickPickSuggestions
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
@@ -327,6 +349,231 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
       console.error(e);
     }
   }, [isAutoSuggest]);
+
+  // Lưu trạng thái công tắc AI vào localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('sw_rta_ai_mode', JSON.stringify(isAIMode));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [isAIMode]);
+
+  // Chuỗi nhận diện thay đổi của đội hình địch và đội hình tôi
+  const enemySignature = enemyTeam.map((s) => s.monsterId || '').join('|');
+  const mySignature = myTeam.map((s) => s.monsterId || '').join('|');
+
+  const myPickedCount = useMemo(() => myTeam.filter((s) => Boolean(s.monsterId)).length, [myTeam]);
+  const enemyPickedCount = useMemo(() => enemyTeam.filter((s) => Boolean(s.monsterId)).length, [enemyTeam]);
+
+  // Tính toán lượt pick kế tiếp chính xác theo trình tự RTA
+  const aiTurnSchedule = useMemo(() => {
+    return computeAiTurnSchedule(firstPickSide, myTeam, enemyTeam);
+  }, [firstPickSide, myTeam, enemyTeam]);
+
+  // Các slot mà Team Tôi cần pick tiếp theo ngay lúc này (chỉ hiển thị theo lượt, không gợi ý trước lượt tương lai)
+  const nextMySlotOrders = useMemo(() => {
+    return aiTurnSchedule.nextSlotOrders;
+  }, [aiTurnSchedule]);
+
+  // Hàm gọi AI Tuyển thủ Top 1 phân tích và gợi ý
+  const runAiAnalysis = useCallback(async () => {
+    if (!isAIMode) return;
+
+    // Nếu đang ở giai đoạn chờ địch pick hoặc tự pick quái mở màn (first pick mine), cập nhật ngay thông điệp hướng dẫn
+    if (aiTurnSchedule.stage === 'first_pick_self' || aiTurnSchedule.stage === 'waiting_enemy') {
+      setIsAILoading(false);
+      setAiCoachAnalysis({
+        stage: aiTurnSchedule.stage,
+        enemyArchetype:
+          enemyPickedCount > 0
+            ? aiCoachAnalysis?.enemyArchetype || 'Đang theo dõi trường phái đối thủ...'
+            : 'Chưa lộ diện',
+        analysisSummary:
+          aiTurnSchedule.waitingMessage ||
+          'Đang theo dõi lượt chọn của Team Địch. AI sẽ lập tức gợi ý ngay khi đối thủ hoàn thành lượt pick...',
+        waitingMessage: aiTurnSchedule.waitingMessage || undefined,
+        predictedWinRate: 80,
+        recommendations: [],
+        alternatives: [],
+      });
+      return;
+    }
+
+    setIsAILoading(true);
+    try {
+      const payload: RTAAiRequestPayload = {
+        firstPickSide,
+        myTeam: myTeam.map((s) => {
+          const m = getMonsterById(allMonsters, s.monsterId);
+          return {
+            pickOrder: s.pickOrder,
+            monsterId: s.monsterId,
+            monsterName: m?.name,
+            element: m?.element,
+            role: m?.role,
+          };
+        }),
+        enemyTeam: enemyTeam.map((s) => {
+          const m = getMonsterById(allMonsters, s.monsterId);
+          return {
+            pickOrder: s.pickOrder,
+            monsterId: s.monsterId,
+            monsterName: m?.name,
+            element: m?.element,
+            role: m?.role,
+          };
+        }),
+        nextSlotOrders: nextMySlotOrders,
+        excludedMonsterIds: aiExcludedMonsterIds,
+        waitingMessage: aiTurnSchedule.waitingMessage || undefined,
+        canPickNow: aiTurnSchedule.canPickNow,
+        availableMonsters: allMonsters.map((m) => ({
+          id: m.id,
+          name: m.name,
+          element: m.element,
+          role: m.role,
+          leaderSkill: m.leaderSkill,
+        })),
+      };
+
+      const result = await fetchRTAAiCoachAnalysis(payload);
+      setAiCoachAnalysis(result);
+    } catch (err: any) {
+      console.error('RTA AI Coach fetch error:', err);
+      showToast('⚠️ Không thể tải nhận định từ AI, đang dùng chiến thuật thay thế.');
+    } finally {
+      setIsAILoading(false);
+    }
+  }, [
+    isAIMode,
+    firstPickSide,
+    mySignature,
+    enemySignature,
+    nextMySlotOrders,
+    aiExcludedMonsterIds,
+    aiTurnSchedule,
+    enemyPickedCount,
+    allMonsters,
+  ]);
+
+  // Tự động phân tích khi chế độ AI được bật, đội hình thay đổi, hoặc người dùng yêu cầu đổi pet
+  useEffect(() => {
+    if (!isAIMode) return;
+    const timer = setTimeout(() => {
+      runAiAnalysis();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [isAIMode, firstPickSide, mySignature, enemySignature, aiExcludedMonsterIds, nextMySlotOrders]);
+
+  // Chế độ đổi pet khi người chơi không có quái thú gợi ý (Swap monster)
+  const handleSwapAiMonster = (monsterId: string, slotOrder: number) => {
+    const mon = getMonsterById(allMonsters, monsterId);
+    setAiExcludedMonsterIds((prev) => {
+      if (prev.includes(monsterId)) return prev;
+      return [...prev, monsterId];
+    });
+
+    // Cập nhật tức thời gợi ý bằng phương án thay thế nếu có để người chơi không phải chờ đợi
+    setAiCoachAnalysis((prev) => {
+      if (!prev) return prev;
+      const rec = prev.recommendations.find((r) => r.slotOrder === slotOrder);
+      if (!rec || !rec.alternatives || rec.alternatives.length === 0) return prev;
+      const validAlt = rec.alternatives.find(
+        (alt) => alt.monsterId !== monsterId && !aiExcludedMonsterIds.includes(alt.monsterId)
+      );
+      if (!validAlt) return prev;
+
+      const updatedRecs = prev.recommendations.map((r) => {
+        if (r.slotOrder !== slotOrder) return r;
+        return {
+          ...r,
+          monsterId: validAlt.monsterId,
+          monsterName: validAlt.monsterName,
+          archetypeRole: validAlt.role || r.archetypeRole,
+          whyPick: validAlt.reason || r.whyPick,
+          alternatives: r.alternatives?.filter((a) => a.monsterId !== validAlt.monsterId),
+        };
+      });
+
+      return {
+        ...prev,
+        recommendations: updatedRecs,
+      };
+    });
+
+    showToast(`🔄 Đã đổi pet vị trí #${slotOrder} (Loại trừ ${mon?.name || monsterId} do bạn chưa sở hữu)`);
+  };
+
+  // Mở modal chọn pet thủ công từ kho cho vị trí chỉ định
+  const handleOpenCustomPicker = (slotOrder: number) => {
+    const targetIdx = myTeam.findIndex((s) => s.pickOrder === slotOrder);
+    if (targetIdx !== -1) {
+      setActivePickerSlot({
+        side: 'mine',
+        index: targetIdx,
+      });
+    }
+  };
+
+  // Các thao tác áp dụng gợi ý từ AI
+  const handleApplyAiRecommendation = (monsterId: string, slotOrder: number) => {
+    recordMonsterPick(monsterId);
+    const targetIdx = myTeam.findIndex((s) => s.pickOrder === slotOrder);
+    if (targetIdx !== -1) {
+      setMyTeam((prev) => {
+        const next = [...prev];
+        next[targetIdx] = { ...next[targetIdx], monsterId };
+        return next;
+      });
+      const mon = getMonsterById(allMonsters, monsterId);
+      showToast(`👑 AI HLV: Đã chọn ${mon?.name || monsterId} vào vị trí #${slotOrder}!`);
+      return;
+    }
+    const emptyIdx = myTeam.findIndex((s) => !s.monsterId);
+    if (emptyIdx !== -1) {
+      setMyTeam((prev) => {
+        const next = [...prev];
+        next[emptyIdx] = { ...next[emptyIdx], monsterId };
+        return next;
+      });
+      const mon = getMonsterById(allMonsters, monsterId);
+      showToast(`👑 AI HLV: Đã chọn ${mon?.name || monsterId} vào vị trí #${myTeam[emptyIdx].pickOrder}!`);
+    }
+  };
+
+  const handleApplyAllAiRecommendations = (recs: RTAAiRecommendation[]) => {
+    const nextTeam = [...myTeam];
+    const names: string[] = [];
+
+    recs.forEach((rec) => {
+      recordMonsterPick(rec.monsterId);
+      const targetIdx = nextTeam.findIndex((s) => s.pickOrder === rec.slotOrder && !s.monsterId);
+      if (targetIdx !== -1) {
+        nextTeam[targetIdx] = { ...nextTeam[targetIdx], monsterId: rec.monsterId };
+        const mon = getMonsterById(allMonsters, rec.monsterId);
+        if (mon?.name) names.push(mon.name);
+      } else {
+        const emptyIdx = nextTeam.findIndex((s) => !s.monsterId);
+        if (emptyIdx !== -1) {
+          nextTeam[emptyIdx] = { ...nextTeam[emptyIdx], monsterId: rec.monsterId };
+          const mon = getMonsterById(allMonsters, rec.monsterId);
+          if (mon?.name) names.push(mon.name);
+        }
+      }
+    });
+
+    setMyTeam(nextTeam);
+    showToast(`👑 AI HLV: Đã áp dụng gợi ý chọn ${names.join(' & ')}!`);
+  };
+
+  const handleApplyAiBan = (monsterId: string) => {
+    handleAcceptSuggestedBan(monsterId);
+  };
+
+  const handleApplyAiLeader = (monsterId: string) => {
+    handleAcceptSuggestedLeader(monsterId);
+  };
 
   // Tính toán gợi ý tự động dựa trên trình tự pick và lịch sử thi đấu
   const autoSuggestions = useMemo<AutoSuggestionState>(() => {
@@ -674,6 +921,8 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     );
     setSelectedSlotRef(null);
     setKillOrder([]);
+    setAiExcludedMonsterIds([]);
+    setAiCoachAnalysis(null);
     showToast('Đã làm mới toàn bộ bàn cờ RTA');
   };
 
@@ -770,9 +1019,16 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
         ? activeUnbannedKillOrder.indexOf(slot.monsterId) + 1
         : undefined;
 
-    // Gợi ý quái thú dạng mờ (Ghost suggestion) cho ô cờ này nếu đang trống
+    // Gợi ý quái thú dạng mờ (Ghost suggestion): ưu tiên AI Pro nếu đang bật AI, ngược lại dùng Auto
+    // Yêu cầu: Nếu tôi pick trước thì AI không cần gợi ý pet đầu (#1)
+    const isFirstPickMineSlot1 = isAIMode && firstPickSide === 'mine' && slot.pickOrder === 1;
+    const aiRec = isAIMode && !isFirstPickMineSlot1 && aiCoachAnalysis && !slot.monsterId && side === 'mine'
+      ? aiCoachAnalysis.recommendations.find((r) => r.slotOrder === slot.pickOrder)
+      : null;
+    const aiGhostMonster = aiRec ? getMonsterById(allMonsters, aiRec.monsterId) : null;
+
     const ghostMonster = !slot.monsterId
-      ? autoSuggestions.suggestedMonstersByOrder[slot.pickOrder] || null
+      ? (isAIMode ? (isFirstPickMineSlot1 ? null : aiGhostMonster) : (autoSuggestions.suggestedMonstersByOrder[slot.pickOrder] || null))
       : null;
 
     // Kiểm tra gợi ý Leader (Team Tôi) và Gợi ý Cấm (Team Địch)
@@ -782,16 +1038,14 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
     const isSuggestedLeader =
       Boolean(slot.monsterId) &&
       side === 'mine' &&
-      isAutoSuggest &&
-      (autoSuggestions.stage === 'lead_and_ban' || myPickedCount >= 4) &&
-      slot.monsterId === autoSuggestions.suggestedLeaderMonsterId;
+      ((isAutoSuggest && (autoSuggestions.stage === 'lead_and_ban' || myPickedCount >= 4) && slot.monsterId === autoSuggestions.suggestedLeaderMonsterId) ||
+       (isAIMode && aiCoachAnalysis?.suggestedLeader?.monsterId === slot.monsterId));
 
     const isSuggestedBan =
       Boolean(slot.monsterId) &&
       side === 'enemy' &&
-      isAutoSuggest &&
-      (autoSuggestions.stage === 'lead_and_ban' || enemyPickedCount >= 3) &&
-      slot.monsterId === autoSuggestions.suggestedBanMonsterId;
+      ((isAutoSuggest && (autoSuggestions.stage === 'lead_and_ban' || enemyPickedCount >= 3) && slot.monsterId === autoSuggestions.suggestedBanMonsterId) ||
+       (isAIMode && aiCoachAnalysis?.suggestedBan?.monsterId === slot.monsterId));
 
     return (
       <div
@@ -814,7 +1068,13 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
           showQuickControls={true}
           showTooltip={false}
           ghostMonster={ghostMonster}
-          onAcceptGhost={() => handleAcceptSuggestedPick(slot.pickOrder)}
+          onAcceptGhost={() => {
+            if (isAIMode && aiRec) {
+              handleApplyAiRecommendation(aiRec.monsterId, slot.pickOrder);
+            } else {
+              handleAcceptSuggestedPick(slot.pickOrder);
+            }
+          }}
           isSuggestedLeader={isSuggestedLeader}
           isSuggestedBan={isSuggestedBan}
           onAcceptSuggestedLeader={() => {
@@ -833,6 +1093,24 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
           onToggleLeader={() => toggleLeader(side, index)}
           emptyLabel={`#${slot.pickOrder}`}
         />
+
+        {/* Nút đổi pet nhanh trực tiếp tại ô gợi ý nếu người chơi không sở hữu */}
+        {isAIMode && aiRec && !slot.monsterId && side === 'mine' && (
+          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 z-20">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSwapAiMonster(aiRec.monsterId, slot.pickOrder);
+              }}
+              className="px-1.5 py-0.5 bg-amber-500/90 hover:bg-amber-400 text-slate-950 font-black text-[9px] rounded-full shadow border border-amber-300 flex items-center gap-0.5 whitespace-nowrap cursor-pointer active:scale-95"
+              title="Đổi sang quái thú khác nếu bạn không có pet này"
+            >
+              <RotateCcw className="w-2.5 h-2.5" />
+              <span>Đổi pet</span>
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -910,7 +1188,12 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
                 onClick={() => {
                   setIsAutoSuggest((prev) => {
                     const next = !prev;
-                    showToast(next ? '⚡ Đã BẬT Chế độ Auto Gợi ý (Màu Xanh)' : '🛑 Đã TẮT Chế độ Auto Gợi ý (Màu Đỏ)');
+                    if (next) {
+                      setIsAIMode(false); // Khi Auto Bật thì AI Tắt
+                      showToast('⚡ Đã BẬT Chế độ Auto Gợi ý (AI Pro đã tắt)');
+                    } else {
+                      showToast('🛑 Đã TẮT Chế độ Auto Gợi ý');
+                    }
                     return next;
                   });
                 }}
@@ -951,19 +1234,76 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
                   {isAutoSuggest ? 'Bật' : 'Tắt'}
                 </span>
               </button>
+
+              {/* Công tắc Bật/Tắt Chế Độ AI Tuyển Thủ TOP 1 RTA (Màu Tím = Bật, Xám = Tắt) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAIMode((prev) => {
+                    const next = !prev;
+                    if (next) {
+                      setIsAutoSuggest(false); // "với chế độ AI được bật thì auto tắt đi"
+                      showToast('👑 Đã BẬT Chế độ AI Tuyển Thủ Top 1 RTA (Auto đã tắt)');
+                    } else {
+                      showToast('🛑 Đã TẮT Chế độ AI Tuyển Thủ RTA');
+                    }
+                    return next;
+                  });
+                }}
+                className={`flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border transition-all cursor-pointer font-bold text-xs shadow-md select-none ${
+                  isAIMode
+                    ? 'bg-gradient-to-r from-purple-950/90 to-indigo-950/90 border-purple-400 text-purple-200 ring-2 ring-purple-500/40 shadow-purple-950/40 hover:border-purple-300'
+                    : 'bg-slate-950/80 border-slate-700/80 text-slate-400 hover:border-purple-500/50 hover:text-slate-200'
+                }`}
+                title={
+                  isAIMode
+                    ? 'Chế độ AI Tuyển Thủ Top 1 RTA đang BẬT. Bấm để Tắt.'
+                    : 'Chế độ AI Tuyển Thủ Top 1 RTA đang TẮT. Bấm để Bật (Tự động tắt Auto).'
+                }
+              >
+                <div className="flex items-center gap-1.5">
+                  <Crown
+                    className={`w-3.5 h-3.5 ${
+                      isAIMode ? 'text-amber-400 fill-amber-400 animate-bounce' : 'text-slate-500'
+                    }`}
+                  />
+                  <span className="font-extrabold tracking-wide uppercase text-[11px]">AI PRO:</span>
+                </div>
+
+                {/* Switch Track */}
+                <div
+                  className={`w-8 h-4.5 rounded-full p-0.5 transition-colors flex items-center shadow-inner ${
+                    isAIMode
+                      ? 'bg-gradient-to-r from-purple-500 to-indigo-500 justify-end'
+                      : 'bg-slate-700 justify-start'
+                  }`}
+                >
+                  <div className="w-3.5 h-3.5 rounded-full bg-white shadow-sm" />
+                </div>
+
+                <span
+                  className={`text-[11px] font-black uppercase tracking-wider ${
+                    isAIMode ? 'text-cyan-300' : 'text-slate-400'
+                  }`}
+                >
+                  {isAIMode ? 'Bật' : 'Tắt'}
+                </span>
+              </button>
             </div>
 
             {/* Action Buttons */}
             <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={handleOpenEnemyBatchPicker}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 rounded-xl text-xs font-bold border border-amber-500/40 transition-all cursor-pointer hover:border-amber-400 active:scale-95"
-                title="Chọn nhiều pet cho Team Địch và tự động gán vào đúng theo thứ tự chọn"
-              >
-                <ListOrdered className="w-3.5 h-3.5 text-amber-400" />
-                <span>Chọn nhiều Pet Địch</span>
-              </button>
+              {!isAIMode && (
+                <button
+                  type="button"
+                  onClick={handleOpenEnemyBatchPicker}
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 rounded-xl text-xs font-bold border border-amber-500/40 transition-all cursor-pointer hover:border-amber-400 active:scale-95"
+                  title="Chọn nhiều pet cho Team Địch và tự động gán vào đúng theo thứ tự chọn"
+                >
+                  <ListOrdered className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Chọn nhiều Pet Địch</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleResetDraft}
@@ -983,6 +1323,24 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
               </button>
             </div>
           </div>
+
+          {/* AI Pro Coach Smart Banner - Active when isAIMode is ON */}
+          {isAIMode && (
+            <RTAAiCoachBanner
+              analysis={aiCoachAnalysis}
+              isLoading={isAILoading}
+              allMonsters={allMonsters}
+              onApplyRecommendation={handleApplyAiRecommendation}
+              onApplyAllRecommendations={handleApplyAllAiRecommendations}
+              onApplyBan={handleApplyAiBan}
+              onApplyLeader={handleApplyAiLeader}
+              onSwapMonster={handleSwapAiMonster}
+              onOpenCustomPicker={handleOpenCustomPicker}
+              onRefreshAnalysis={runAiAnalysis}
+              myPickedCount={myPickedCount}
+              enemyPickedCount={enemyPickedCount}
+            />
+          )}
 
           {/* Auto Suggestions Smart Banner - Hiển thị hướng dẫn và nút thao tác nhanh trong giai đoạn chọn quái (giai đoạn lead_and_ban đã có nút trực tiếp trên từng avatar nên ẩn banner để giao diện gọn gàng) */}
           {isAutoSuggest && autoSuggestions.isActive && autoSuggestions.stage === 'pick_step' && (
@@ -1570,7 +1928,7 @@ export const RTADraftView: React.FC<RTADraftViewProps> = ({
           }
           onOpenAddModal={onOpenAddMonster}
           mode="rta"
-          allowMultiSelect={activePickerSlot.side === 'enemy'}
+          allowMultiSelect={!isAIMode && activePickerSlot.side === 'enemy'}
         />
       )}
     </div>

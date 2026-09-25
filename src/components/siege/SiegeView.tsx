@@ -164,9 +164,6 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
   // Active slot being picked for defense (0, 1, or 2)
   const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
 
-  // Expanded strategy IDs
-  const [expandedStrategyIds, setExpandedStrategyIds] = useState<Record<string, boolean>>({});
-
   // Selected defense monsters
   const defMonsters = defenseIds.map((id) => getMonsterById(allMonsters, id));
 
@@ -243,9 +240,11 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
     }
   };
 
-  // Open modal to add a new counter for current defense
-  const handleOpenAddCounter = () => {
-    if (!canSaveCurrent) {
+  // Open modal to add a new counter for current defense or a selected defense
+  const handleOpenAddCounter = (defense?: SavedSiegeDefense) => {
+    if (defense) {
+      setDefenseIds([defense.monsterIds[0], defense.monsterIds[1], defense.monsterIds[2]]);
+    } else if (!canSaveCurrent) {
       setToastMessage('Vui lòng chọn đủ 3 quái thú Defense trước khi thêm Counter!');
       return;
     }
@@ -271,7 +270,6 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
       return [counter, ...prev];
     });
 
-    setExpandedStrategyIds((prev) => ({ ...prev, [counter.id]: true }));
     setToastMessage('Đã lưu đội hình counter thành công!');
 
     try {
@@ -327,25 +325,6 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
     } catch (err) {
       console.warn('Error deleting counter from Firestore:', err);
     }
-  };
-
-  // Match existing counters in database
-  const exactMatches = useMemo(() => {
-    const validDefIds = defenseIds.filter((id): id is string => Boolean(id));
-    if (validDefIds.length < 3) return [];
-
-    // Find in countersDatabase
-    return countersDatabase.filter((c) => {
-      return (
-        c.defenseMonsterIds.includes(validDefIds[0]) &&
-        c.defenseMonsterIds.includes(validDefIds[1]) &&
-        c.defenseMonsterIds.includes(validDefIds[2])
-      );
-    });
-  }, [defenseIds, countersDatabase]);
-
-  const toggleExpand = (id: string) => {
-    setExpandedStrategyIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   return (
@@ -405,43 +384,6 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
           </div>
         </div>
 
-        {/* DUPLICATE DEFENSE WARNING NOTIFICATION */}
-        {duplicateDefense && (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 bg-amber-500/10 border border-amber-500/35 rounded-2xl animate-in fade-in duration-200">
-            <div className="flex items-start sm:items-center gap-3">
-              <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl shrink-0 mt-0.5 sm:mt-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="text-xs font-black text-amber-200 flex items-center gap-1.5 flex-wrap">
-                  <span>ĐỘI HÌNH NÀY ĐÃ TỒN TẠI:</span>
-                  <span className="text-white underline decoration-amber-400/60 underline-offset-2">
-                    "{duplicateDefense.name}"
-                  </span>
-                  <span className="text-amber-400/90 font-normal text-[11px]">
-                    (không phân biệt thứ tự chọn quái)
-                  </span>
-                </div>
-                <p className="text-[11.5px] text-slate-300 mt-0.5 leading-relaxed">
-                  3 quái thú này đã có sẵn trong danh sách phòng thủ Siege. Hệ thống thông báo để bạn không thêm lặp lại.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-              <button
-                type="button"
-                onClick={() => handleEditDefense(duplicateDefense)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl transition-all cursor-pointer shadow-sm"
-                title="Chỉnh sửa đội hình đã tồn tại"
-              >
-                <Pencil className="w-3 h-3" />
-                Sửa Đội Hình Này
-              </button>
-            </div>
-          </div>
-        )}
-
         <div className="flex flex-col md:flex-row items-center md:items-start justify-between gap-6">
           {/* 3 Pet Avatars (Clean avatar squares with hover tooltip) */}
           <div className="flex items-center gap-4">
@@ -490,7 +432,7 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
         </div>
       </div>
 
-      {/* SAVED DEFENSES LIST SECTION */}
+      {/* SAVED DEFENSES & COUNTERS 3-COLUMN ARCHITECTURE */}
       <SavedDefensesList
         savedDefenses={savedDefenses}
         activeDefenseIds={defenseIds}
@@ -502,186 +444,12 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
         onOpenSaveCurrent={handleOpenSaveModal}
         canSaveCurrent={canSaveCurrent}
         onRestoreDefaults={handleRestoreDefaults}
+        onOpenAddCounter={handleOpenAddCounter}
+        onEditCounter={handleEditCounter}
+        onDeleteCounter={handleDeleteCounter}
+        onAIGenerateForCounter={handleAIGenerateForCounter}
+        aiLoadingCounterId={aiLoadingCounterId}
       />
-
-      {/* COUNTERS SECTION (Saved & Editable Counter Formations) */}
-      <div className="space-y-4">
-        {/* Counters Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
-              <Swords className="w-5 h-5 text-teal-400" />
-              <span>
-                <span className="text-teal-400">{exactMatches.length}</span>{' '}
-                ĐỘI HÌNH COUNTER ĐÃ LƯU
-              </span>
-            </h3>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleOpenAddCounter}
-              className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold rounded-xl text-xs shadow-md transition-all cursor-pointer"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Thêm Counter Mới</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Counter Cards List */}
-        {exactMatches.length === 0 ? (
-          <div className="text-center py-14 bg-slate-900/60 border border-slate-800 rounded-3xl space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-center mx-auto text-slate-400">
-              <Swords className="w-6 h-6 text-teal-400/80" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-base font-bold text-slate-300">
-                Chưa có đội hình counter nào được lưu cho bộ ba này
-              </p>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Bấm "Thêm Counter Mới" để tạo đội hình khắc chế và lưu lại chiến thuật của bạn!
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={handleOpenAddCounter}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-bold text-xs rounded-xl shadow cursor-pointer transition-all"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Thêm Counter Mới</span>
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-3.5">
-            {/* Exact Saved Matches */}
-            {exactMatches.map((counter) => {
-              const cMonsters = counter.counterMonsterIds.map((id) => getMonsterById(allMonsters, id));
-              const isExpanded = Boolean(expandedStrategyIds[counter.id]);
-
-              return (
-                <div
-                  key={counter.id}
-                  className="bg-slate-900 border border-slate-800/90 hover:border-slate-700/90 rounded-2xl p-5 shadow-xl transition-all space-y-3"
-                >
-                  {/* Counter Header Row */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    {/* 3 Counter Pets + Names */}
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        {cMonsters.map((monster, i) => (
-                          <MonsterAvatar
-                            key={i}
-                            monster={monster}
-                            size="md"
-                            showStars={false}
-                            showName={false}
-                          />
-                        ))}
-                      </div>
-
-                      <div className="space-y-1">
-                        <h4 className="text-sm font-bold text-white leading-tight">
-                          {cMonsters.map((m) => m?.name || 'Unknown').join(' ')}
-                        </h4>
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
-                          {counter.isCustom && (
-                            <span className="px-2 py-0.5 rounded bg-teal-500/20 text-teal-300 border border-teal-500/30 font-bold">
-                              Đã lưu
-                            </span>
-                          )}
-                          {counter.difficulty && (
-                            <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-300 border border-slate-700 font-medium">
-                              Độ khó: {counter.difficulty}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Actions: Edit, Delete, Details */}
-                    <div className="flex items-center gap-2 self-end sm:self-auto">
-                      <button
-                        type="button"
-                        onClick={() => handleEditCounter(counter)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-teal-300 hover:text-teal-200 rounded-xl text-xs font-bold transition-all border border-slate-700/80 hover:border-teal-500/40 cursor-pointer shadow-sm"
-                        title="Chỉnh sửa đội hình counter này"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        <span>Chỉnh sửa</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCounter(counter.id)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800/80 hover:bg-rose-950/50 text-slate-400 hover:text-rose-300 rounded-xl text-xs font-medium transition-all border border-slate-750 hover:border-rose-800/60 cursor-pointer"
-                        title="Xóa counter này"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span className="hidden md:inline">Xóa</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => toggleExpand(counter.id)}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-medium transition-colors cursor-pointer"
-                      >
-                        <span>Chi tiết</span>
-                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Expanded Strategy Body */}
-                  {isExpanded && (
-                    <div className="pt-3 border-t border-slate-800/80 bg-slate-950/40 -mx-5 -mb-5 p-5 rounded-b-2xl space-y-3 animate-in fade-in duration-150 text-xs">
-                      <div className="space-y-1.5">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <strong className="text-slate-300 block font-semibold">
-                            Chiến thuật đánh & Yêu cầu chỉ số từng Pet:
-                          </strong>
-                          <button
-                            type="button"
-                            onClick={() => handleAIGenerateForCounter(counter)}
-                            disabled={aiLoadingCounterId === counter.id}
-                            className="flex items-center gap-1.5 px-2.5 py-1 bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 rounded-lg text-[11px] font-bold transition-all border border-teal-500/30 cursor-pointer disabled:opacity-60"
-                            title="Tải chiến thuật và yêu cầu chỉ số phân tích bởi Gemini AI"
-                          >
-                            {aiLoadingCounterId === counter.id ? (
-                              <>
-                                <Loader2 className="w-3 h-3 animate-spin text-teal-400" />
-                                <span>AI đang phân tích...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Sparkles className="w-3 h-3 text-teal-400" />
-                                <span>AI gợi ý lại chiến thuật</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                        <p className="text-slate-300 leading-relaxed bg-slate-900/60 p-3 rounded-xl border border-slate-800 whitespace-pre-line font-sans">
-                          {counter.strategy}
-                        </p>
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-500 pt-1">
-                        <div className="flex items-center gap-3">
-                          <span>Độ khó: <strong className="text-amber-300">{counter.difficulty || 'Trung bình'}</strong></span>
-                          <span className="flex items-center gap-1 text-emerald-400">
-                            <CheckCircle className="w-3.5 h-3.5" /> Đã kiểm chứng tỉ lệ thắng cao
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
 
       {/* Defense Monster Picker Modal */}
       {activeSlotIndex !== null && (

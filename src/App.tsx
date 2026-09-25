@@ -45,12 +45,18 @@ export default function App() {
       (firestoreList) => {
         setIsFirebaseConnected(true);
         if (firestoreList.length > 0) {
-          setMonsters(firestoreList);
+          // Merge with DEFAULT_MONSTERS so newly added RTA meta superstars are always available
+          const firestoreIds = new Set(firestoreList.map((m) => m.id));
+          const missingDefaults = DEFAULT_MONSTERS.filter((m) => !firestoreIds.has(m.id));
+          const merged = [...firestoreList, ...missingDefaults];
+          setMonsters(merged);
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(firestoreList));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
           } catch {
             // ignore
           }
+        } else {
+          setMonsters(DEFAULT_MONSTERS);
         }
       },
       (err) => {

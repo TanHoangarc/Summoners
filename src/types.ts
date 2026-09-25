@@ -61,3 +61,44 @@ export interface SavedSiegeDefense {
   createdAt: number;
 }
 
+export interface RTAAiRecommendation {
+  monsterId: string;
+  monsterName: string;
+  slotOrder: number;
+  winRateEstimate: number;
+  archetypeRole: string;
+  whyPick: string;
+  operationalStrategy: string;
+  riskNotes: string;
+  alternatives?: RTAAiAlternativePick[];
+}
+
+export interface RTAAiAlternativePick {
+  monsterId: string;
+  monsterName: string;
+  reason: string;
+  role: string;
+}
+
+export interface RTAAiCoachAnalysis {
+  stage: 'pick' | 'lead_and_ban' | 'waiting_enemy' | 'idle';
+  enemyArchetype: string;
+  analysisSummary: string;
+  waitingMessage?: string;
+  canPickNow?: boolean;
+  predictedWinRate: number;
+  recommendations: RTAAiRecommendation[];
+  alternatives?: RTAAiAlternativePick[];
+  suggestedBan?: {
+    monsterId: string;
+    monsterName: string;
+    reason: string;
+  };
+  suggestedLeader?: {
+    monsterId: string;
+    monsterName: string;
+    skillDesc: string;
+    reason: string;
+  };
+}
+

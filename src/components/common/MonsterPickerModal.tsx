@@ -47,17 +47,19 @@ export const MonsterPickerModal: React.FC<MonsterPickerModalProps> = ({
 
   // Chế độ chọn nhiều pet (đặc biệt hữu ích khi chọn Team Địch theo thứ tự)
   const isEnemySide = activePickerSlot?.side === 'enemy';
-  const canMultiSelect = Boolean(onSelectMultipleMonsters && (isEnemySide || allowMultiSelect));
+  const canMultiSelect = Boolean(
+    allowMultiSelect !== false && onSelectMultipleMonsters && (isEnemySide || allowMultiSelect === true)
+  );
   const [multiSelectMode, setMultiSelectMode] = useState<boolean>(false);
   const [selectedOrder, setSelectedOrder] = useState<string[]>([]);
 
-  // Khi mở modal, tự động bật multiSelectMode nếu đang chọn cho Team Địch và reset thứ tự đã chọn
+  // Khi mở modal, tự động bật multiSelectMode nếu được phép và reset thứ tự đã chọn
   useEffect(() => {
     if (isOpen) {
       setSelectedOrder([]);
-      setMultiSelectMode(Boolean(isEnemySide || allowMultiSelect));
+      setMultiSelectMode(Boolean(canMultiSelect));
     }
-  }, [isOpen, isEnemySide, allowMultiSelect]);
+  }, [isOpen, canMultiSelect]);
 
   // Xác định ngữ cảnh tính điểm ngầm (RTA, Siege hoặc Cả hai)
   const effectiveMode = useMemo((): 'all' | 'rta' | 'siege' => {
