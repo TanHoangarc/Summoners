@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Monster } from './types';
-import { DEFAULT_MONSTERS } from './data/defaultMonsters';
 import { Navigation, ActiveTab } from './components/Navigation';
 import { RTADraftView } from './components/rta/RTADraftView';
 import { SiegeView } from './components/siege/SiegeView';
@@ -19,44 +18,37 @@ export default function App() {
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   
-  // Load monsters initially from localStorage as fallback
+  // Load monsters initially from localStorage as fallback without default injection
   const [monsters, setMonsters] = useState<Monster[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed;
         }
       }
     } catch {
       // ignore
     }
-    return DEFAULT_MONSTERS;
+    return [];
   });
 
   // Modal states
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingMonster, setEditingMonster] = useState<Monster | null>(null);
 
-  // Subscribe to Firebase Firestore in realtime
+  // Subscribe to Firebase Firestore in realtime - ONLY use user's monsters, no defaults
   useEffect(() => {
     const unsubscribe = subscribeToMonsters(
       (firestoreList) => {
         setIsFirebaseConnected(true);
-        if (firestoreList.length > 0) {
-          // Merge with DEFAULT_MONSTERS so newly added RTA meta superstars are always available
-          const firestoreIds = new Set(firestoreList.map((m) => m.id));
-          const missingDefaults = DEFAULT_MONSTERS.filter((m) => !firestoreIds.has(m.id));
-          const merged = [...firestoreList, ...missingDefaults];
-          setMonsters(merged);
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-          } catch {
-            // ignore
-          }
-        } else {
-          setMonsters(DEFAULT_MONSTERS);
+        // Strictly set the monsters from Firestore, never adding or merging default monsters
+        setMonsters(firestoreList);
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(firestoreList));
+        } catch {
+          // ignore
         }
       },
       (err) => {
