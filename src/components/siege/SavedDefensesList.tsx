@@ -49,7 +49,8 @@ const CompactMonsterIcon: React.FC<{
   monster?: Monster | null;
   isLeader?: boolean;
   size?: 'sm' | 'md';
-}> = ({ monster, isLeader = false, size = 'md' }) => {
+  disableTitle?: boolean;
+}> = ({ monster, isLeader = false, size = 'md', disableTitle = false }) => {
   const [imgErr, setImgErr] = useState(false);
   const elementInfo = monster ? ELEMENT_COLORS[monster.element] || ELEMENT_COLORS.water : null;
 
@@ -75,9 +76,13 @@ const CompactMonsterIcon: React.FC<{
           ? 'border-2 border-amber-400/90 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
           : 'border border-slate-700/90'
       }`}
-      title={`${monster.name}${monster.awakenedName ? ` (${monster.awakenedName})` : ''}${
-        isLeader ? ' [Leader]' : ''
-      }`}
+      title={
+        disableTitle
+          ? undefined
+          : `${monster.name}${monster.awakenedName ? ` (${monster.awakenedName})` : ''}${
+              isLeader ? ' [Leader]' : ''
+            }`
+      }
     >
       {monster.avatarUrl && !imgErr ? (
         <img
@@ -146,6 +151,17 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
     slotIndex: number;
     rect: DOMRect;
   } | null>(null);
+
+  // Auto-dismiss floating tooltip when user scrolls or resizes
+  useEffect(() => {
+    const handleDismissTooltip = () => setHoveredPetTooltip(null);
+    window.addEventListener('scroll', handleDismissTooltip, { capture: true, passive: true });
+    window.addEventListener('resize', handleDismissTooltip, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleDismissTooltip, { capture: true });
+      window.removeEventListener('resize', handleDismissTooltip);
+    };
+  }, []);
 
   // Mobile / small screen tab switcher: 'column1' | 'column2' | 'column3'
   const [mobileTab, setMobileTab] = useState<'column1' | 'column2' | 'column3'>('column1');
@@ -1028,7 +1044,12 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
                                 onMouseLeave={() => setHoveredPetTooltip(null)}
                               >
                                 <div className="relative">
-                                  <CompactMonsterIcon monster={monster} isLeader={isLeader} size="sm" />
+                                  <CompactMonsterIcon
+                                    monster={monster}
+                                    isLeader={isLeader}
+                                    size="sm"
+                                    disableTitle={true}
+                                  />
 
                                   {/* Edit / Attach info image button at each pet position */}
                                   <button
@@ -1046,7 +1067,7 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
                                         ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 border-teal-300 ring-1 ring-teal-400'
                                         : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-teal-300 border-slate-700'
                                     }`}
-                                    title={
+                                    aria-label={
                                       hasImage
                                         ? `Đã có ảnh thông tin cho ${monster?.name || `Pet ${slotIdx + 1}`}. Nhấp để sửa/đổi ảnh`
                                         : `Chưa có ảnh. Nhấp để dán/tải ảnh thông tin cho ${monster?.name || `Pet ${slotIdx + 1}`}`
@@ -1118,60 +1139,94 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
         </div>
       </div>
 
-      {/* Floating Pet Image Tooltip on Hover */}
-      {hoveredPetTooltip && (
-        <div
-          className="fixed z-[100] pointer-events-none animate-in fade-in zoom-in-95 duration-100"
-          style={{
-            left: `${Math.max(16, Math.min(hoveredPetTooltip.rect.left - 100, window.innerWidth - 380))}px`,
-            top: `${Math.max(16, Math.min(hoveredPetTooltip.rect.bottom + 8, window.innerHeight - 380))}px`,
-          }}
-        >
-          <div className="bg-slate-950/95 border-2 border-teal-500/80 rounded-2xl shadow-2xl p-2.5 max-w-[360px] backdrop-blur-md space-y-2">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black text-white">
-                  {hoveredPetTooltip.monster?.name || `Pet ${hoveredPetTooltip.slotIndex + 1}`}
-                </span>
-                {hoveredPetTooltip.slotIndex === 0 && (
-                  <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-                    Leader
-                  </span>
-                )}
-              </div>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
-                  hoveredPetTooltip.imageUrl
-                    ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
-                    : 'bg-slate-800 text-slate-400'
-                }`}
-              >
-                {hoveredPetTooltip.imageUrl ? '📸 Ảnh thông tin / Rune' : 'Chưa có ảnh'}
-              </span>
-            </div>
+      {/* Floating Pet Image Tooltip on Hover (strictly below pet) */}
+      {hoveredPetTooltip && (() => {
+        const petRect = hoveredPetTooltip.rect;
+        const tooltipWidth = 360;
+        const petCenterX = petRect.left + petRect.width / 2;
+        const idealLeft = petCenterX - tooltipWidth / 2;
+        const leftPos = Math.max(12, Math.min(idealLeft, window.innerWidth - tooltipWidth - 16));
+        const arrowLeft = Math.max(16, Math.min(petCenterX - leftPos - 6, tooltipWidth - 24));
+        const topPos = petRect.bottom + 8;
+        const maxAvailableHeight = Math.max(160, window.innerHeight - topPos - 16);
 
-            {hoveredPetTooltip.imageUrl ? (
-              <div className="space-y-1">
-                <img
-                  src={hoveredPetTooltip.imageUrl}
-                  alt="Thông tin quái thú"
-                  className="max-h-[300px] max-w-full rounded-xl object-contain border border-slate-700/80 mx-auto shadow-md"
-                />
-                <div className="text-[10px] text-center text-slate-400">
-                  Nhấp nút ✏️ để thay đổi hoặc dán ảnh mới
+        return (
+          <div
+            className="fixed z-[100] pointer-events-none animate-in fade-in zoom-in-95 duration-100"
+            style={{
+              left: `${leftPos}px`,
+              top: `${topPos}px`,
+              width: `${tooltipWidth}px`,
+            }}
+          >
+            {/* Caret pointing up to the pet */}
+            <div
+              className="w-3 h-3 bg-slate-950 border-t-2 border-l-2 border-teal-500 rotate-45 -mb-1.5 z-10"
+              style={{ marginLeft: `${arrowLeft}px` }}
+            />
+
+            <div
+              className="bg-slate-950/98 border-2 border-teal-500 rounded-2xl shadow-2xl p-2.5 backdrop-blur-md space-y-2 overflow-hidden"
+              style={{
+                maxHeight: `${maxAvailableHeight}px`,
+              }}
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-white">
+                    {hoveredPetTooltip.monster?.name || `Pet ${hoveredPetTooltip.slotIndex + 1}`}
+                  </span>
+                  {hoveredPetTooltip.monster?.awakenedName && (
+                    <span className="text-[10px] text-slate-400">
+                      ({hoveredPetTooltip.monster.awakenedName})
+                    </span>
+                  )}
+                  {hoveredPetTooltip.slotIndex === 0 && (
+                    <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                      Leader
+                    </span>
+                  )}
                 </div>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                    hoveredPetTooltip.imageUrl
+                      ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {hoveredPetTooltip.imageUrl ? '📸 Ảnh thông tin / Rune' : 'Chưa có ảnh'}
+                </span>
               </div>
-            ) : (
-              <div className="py-3 text-center text-xs text-slate-400 space-y-1">
-                <p>Pet này chưa có ảnh thông tin hoặc bảng rune.</p>
-                <p className="text-[11px] text-teal-400 font-medium">
-                  Bấm vào nút ✏️ ở góc pet để dán ảnh (Ctrl+V)
-                </p>
-              </div>
-            )}
+
+              {hoveredPetTooltip.imageUrl ? (
+                <div className="space-y-1">
+                  <img
+                    src={hoveredPetTooltip.imageUrl}
+                    alt="Thông tin quái thú"
+                    className="rounded-xl object-contain border border-slate-700/80 mx-auto shadow-md"
+                    style={{
+                      maxHeight: `${Math.max(
+                        100,
+                        Math.min(300, maxAvailableHeight - 55)
+                      )}px`,
+                    }}
+                  />
+                  <div className="text-[10px] text-center text-slate-400">
+                    Nhấp nút ✏️ để thay đổi hoặc dán ảnh mới
+                  </div>
+                </div>
+              ) : (
+                <div className="py-3 text-center text-xs text-slate-400 space-y-1">
+                  <p>Pet này chưa có ảnh thông tin hoặc bảng rune.</p>
+                  <p className="text-[11px] text-teal-400 font-medium">
+                    Bấm vào nút ✏️ ở góc pet để dán ảnh (Ctrl+V)
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Pet Info Image Edit Modal */}
       {editingPetImageContext && (
