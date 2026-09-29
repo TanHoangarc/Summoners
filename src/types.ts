@@ -51,6 +51,7 @@ export interface SiegeCounterStrategy {
   isCustom?: boolean;
   updatedAt?: string;
   petImages?: [string | null, string | null, string | null];
+  priorityTargetMonsterId?: string | null;
 }
 
 export interface SavedSiegeDefense {
@@ -60,6 +61,7 @@ export interface SavedSiegeDefense {
   leaderMonsterId?: string;
   notes?: string;
   createdAt: number;
+  priorityTargetMonsterId?: string | null;
 }
 
 export interface RTAAiRecommendation {

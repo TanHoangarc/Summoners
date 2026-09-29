@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
   Check,
   Eye,
+  Crosshair,
 } from 'lucide-react';
 import { Monster, SiegeCounterStrategy } from '../../types';
 import { getMonsterById } from '../../utils/monsterHelpers';
@@ -26,6 +27,7 @@ interface SaveCounterModalProps {
   editingCounter?: SiegeCounterStrategy | null;
   onOpenAddMonster?: () => void;
   existingCounters?: SiegeCounterStrategy[];
+  initialPriorityTargetMonsterId?: string | null;
 }
 
 export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
@@ -37,11 +39,15 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
   editingCounter,
   onOpenAddMonster,
   existingCounters = [],
+  initialPriorityTargetMonsterId,
 }) => {
   // Defense monsters for display
   const def1 = getMonsterById(allMonsters, defenseIds[0]);
   const def2 = getMonsterById(allMonsters, defenseIds[1]);
   const def3 = getMonsterById(allMonsters, defenseIds[2]);
+
+  // Priority Kill Target for Defense (pet ưu tiên tiêu diệt trước)
+  const [priorityTargetMonsterId, setPriorityTargetMonsterId] = useState<string | null>(null);
 
   // Counter slots
   const [counterSlots, setCounterSlots] = useState<[string | null, string | null, string | null]>([
@@ -154,10 +160,16 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
         ]);
         setPetImages(editingCounter.petImages || [null, null, null]);
         setDifficulty(editingCounter.difficulty || 'Trung bình');
+        setPriorityTargetMonsterId(
+          editingCounter.priorityTargetMonsterId !== undefined
+            ? editingCounter.priorityTargetMonsterId
+            : initialPriorityTargetMonsterId || null
+        );
       } else {
         setCounterSlots([null, null, null]);
         setPetImages([null, null, null]);
         setDifficulty('Trung bình');
+        setPriorityTargetMonsterId(initialPriorityTargetMonsterId || null);
       }
       setError(null);
       setSuccessNotice(null);
@@ -167,7 +179,7 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
       setEditingImageSlot(null);
       setHoveredPetImageSlot(null);
     }
-  }, [isOpen, editingCounter]);
+  }, [isOpen, editingCounter, initialPriorityTargetMonsterId]);
 
   if (!isOpen) return null;
 
@@ -197,6 +209,7 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
       isCustom: true,
       updatedAt: new Date().toISOString(),
       petImages: petImages,
+      priorityTargetMonsterId: priorityTargetMonsterId || null,
     };
 
     onSave(savedCounter);
@@ -251,27 +264,121 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
               </div>
             )}
 
-            {/* Target Defense Display */}
-            <div className="p-4 bg-slate-950/70 rounded-2xl border border-slate-800/90 space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1.5 font-bold text-slate-400 uppercase tracking-wider text-[11px]">
+            {/* Target Defense Display with Priority Kill Selection */}
+            <div className="p-4 bg-slate-950/70 rounded-2xl border border-slate-800/90 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-1 text-xs">
+                <span className="flex items-center gap-1.5 font-bold text-slate-300 uppercase tracking-wider text-[11px]">
                   <Shield className="w-3.5 h-3.5 text-amber-400" />
                   Đội hình Defense mục tiêu cần khắc chế:
                 </span>
-                <span className="text-[11px] text-amber-400/90 font-medium">3 Pet đã nạp</span>
+                {priorityTargetMonsterId ? (
+                  <span className="text-[11px] font-bold text-red-400 flex items-center gap-1 bg-red-500/15 px-2 py-0.5 rounded-md border border-red-500/40 animate-pulse">
+                    <X className="w-3.5 h-3.5 stroke-[3.5] text-red-400" />
+                    Ưu tiên kill: {getMonsterById(allMonsters, priorityTargetMonsterId)?.name}
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-slate-400 italic">
+                    (Nhấp chọn pet ưu tiên kill trước)
+                  </span>
+                )}
               </div>
-              <div className="flex items-center gap-3">
-                {[def1, def2, def3].map((mon, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center gap-2 bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-800"
-                  >
-                    <MonsterAvatar monster={mon} size="sm" showStars={false} showName={false} isLeader={idx === 0} />
-                    <span className="text-xs font-bold text-slate-200 truncate max-w-[90px]">
-                      {mon?.name || 'Trống'}
-                    </span>
-                  </div>
-                ))}
+
+              <div className="grid grid-cols-3 gap-2.5">
+                {[def1, def2, def3].map((mon, idx) => {
+                  const isPriority = Boolean(mon && priorityTargetMonsterId === mon.id);
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => {
+                        if (mon) {
+                          setPriorityTargetMonsterId((prev) => (prev === mon.id ? null : mon.id));
+                        }
+                      }}
+                      className={`relative flex flex-col items-center p-2.5 rounded-2xl transition-all cursor-pointer border ${
+                        isPriority
+                          ? 'bg-red-950/40 border-red-500/90 ring-2 ring-red-500/50 shadow-[0_0_14px_rgba(239,68,68,0.35)]'
+                          : 'bg-slate-900/90 hover:bg-slate-850 border-slate-800 hover:border-slate-750'
+                      }`}
+                      title={
+                        mon
+                          ? isPriority
+                            ? `Đang chọn ${mon.name} là mục tiêu ưu tiên kill trước. Nhấp để hủy.`
+                            : `Nhấp để chọn ${mon.name} là mục tiêu ưu tiên kill trước`
+                          : undefined
+                      }
+                    >
+                      {/* Avatar with Red X overlay if priority */}
+                      <div className="relative">
+                        <MonsterAvatar
+                          monster={mon}
+                          size="md"
+                          showStars={false}
+                          showName={false}
+                          isLeader={idx === 0}
+                        />
+
+                        {/* Prominent Red X overlay */}
+                        {isPriority && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none rounded-xl bg-red-950/60 backdrop-blur-[0.5px]">
+                            <X className="w-7 h-7 text-red-500 stroke-[4] drop-shadow-[0_0_8px_rgba(239,68,68,1)] animate-pulse" />
+                            <span className="absolute -bottom-1 px-1.5 py-0 bg-red-600 text-white text-[8px] font-black rounded uppercase tracking-wider shadow-md border border-red-300">
+                              KILL
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <span
+                        className={`mt-1.5 text-xs font-bold truncate max-w-full text-center ${
+                          isPriority ? 'text-red-300 font-black' : 'text-slate-200'
+                        }`}
+                      >
+                        {mon?.name || 'Trống'}
+                      </span>
+
+                      {/* Nút chọn pet ưu tiên kill trước */}
+                      {mon && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPriorityTargetMonsterId((prev) => (prev === mon.id ? null : mon.id));
+                          }}
+                          className={`mt-2 w-full py-1 px-1.5 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 transition-all cursor-pointer border ${
+                            isPriority
+                              ? 'bg-red-600 hover:bg-red-500 text-white border-red-400 shadow-md ring-1 ring-red-300'
+                              : 'bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white border-slate-700 hover:border-red-400/50'
+                          }`}
+                        >
+                          {isPriority ? (
+                            <>
+                              <X className="w-3 h-3 stroke-[3]" />
+                              <span>Đang ưu tiên</span>
+                            </>
+                          ) : (
+                            <>
+                              <Crosshair className="w-3 h-3 text-red-400" />
+                              <span>Ưu tiên kill</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 bg-slate-900/60 px-2.5 py-1.5 rounded-xl border border-slate-800/80">
+                <Crosshair className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                <span>
+                  {priorityTargetMonsterId ? (
+                    <>
+                      Đã chọn pet <span className="font-bold text-red-400">{getMonsterById(allMonsters, priorityTargetMonsterId)?.name}</span>. Khi lưu, tại cột Counter sẽ hiển thị dấu X đỏ trực tiếp lên quái thú này!
+                    </>
+                  ) : (
+                    'Bấm vào quái thú hoặc nút "Ưu tiên kill" để đánh dấu pet cần tiêu diệt trước.'
+                  )}
+                </span>
               </div>
             </div>
 

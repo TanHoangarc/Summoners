@@ -40,6 +40,7 @@ interface SavedDefensesListProps {
   onEditCounter: (counter: SiegeCounterStrategy) => void;
   onDeleteCounter: (counterId: string) => void;
   onSaveCounter?: (counter: SiegeCounterStrategy) => void;
+  onSaveDefense?: (defense: SavedSiegeDefense) => void;
   onAIGenerateForCounter?: (counter: SiegeCounterStrategy) => void;
   aiLoadingCounterId?: string | null;
 }
@@ -50,7 +51,14 @@ const CompactMonsterIcon: React.FC<{
   isLeader?: boolean;
   size?: 'sm' | 'md';
   disableTitle?: boolean;
-}> = ({ monster, isLeader = false, size = 'md', disableTitle = false }) => {
+  isPriorityKill?: boolean;
+}> = ({
+  monster,
+  isLeader = false,
+  size = 'md',
+  disableTitle = false,
+  isPriorityKill = false,
+}) => {
   const [imgErr, setImgErr] = useState(false);
   const elementInfo = monster ? ELEMENT_COLORS[monster.element] || ELEMENT_COLORS.water : null;
 
@@ -72,7 +80,9 @@ const CompactMonsterIcon: React.FC<{
   return (
     <div
       className={`${dimClasses} overflow-hidden shrink-0 select-none shadow-sm relative bg-slate-950 transition-transform ${
-        isLeader
+        isPriorityKill
+          ? 'border-2 border-red-500 ring-2 ring-red-500/60 shadow-[0_0_12px_rgba(239,68,68,0.7)]'
+          : isLeader
           ? 'border-2 border-amber-400/90 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
           : 'border border-slate-700/90'
       }`}
@@ -81,7 +91,7 @@ const CompactMonsterIcon: React.FC<{
           ? undefined
           : `${monster.name}${monster.awakenedName ? ` (${monster.awakenedName})` : ''}${
               isLeader ? ' [Leader]' : ''
-            }`
+            }${isPriorityKill ? ' [🎯 ƯU TIÊN KILL TRƯỚC]' : ''}`
       }
     >
       {monster.avatarUrl && !imgErr ? (
@@ -106,6 +116,19 @@ const CompactMonsterIcon: React.FC<{
           </span>
         </div>
       )}
+
+      {/* Red X Priority Target Overlay */}
+      {isPriorityKill && (
+        <div
+          className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none bg-red-950/45 backdrop-blur-[0.3px]"
+          title={`Mục tiêu ưu tiên kill trước: ${monster.name}`}
+        >
+          <X className="w-5 h-5 sm:w-6 sm:h-6 text-red-500 stroke-[4] drop-shadow-[0_0_6px_rgba(239,68,68,1)] animate-pulse" />
+          <span className="absolute -bottom-0.5 px-1 py-0 bg-red-600 text-white text-[7px] font-black rounded uppercase tracking-tighter shadow-md border border-red-300 leading-none">
+            KILL
+          </span>
+        </div>
+      )}
     </div>
   );
 };
@@ -125,6 +148,7 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
   onEditCounter,
   onDeleteCounter,
   onSaveCounter,
+  onSaveDefense,
 }) => {
   // Cột 1: Quick leader search input
   const [leaderSearchTerm, setLeaderSearchTerm] = useState('');
@@ -307,6 +331,26 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
     if (!currentSelectedDefense) return [];
     return getDefenseCounters(currentSelectedDefense.monsterIds);
   }, [currentSelectedDefense, countersDatabase]);
+
+  // Priority kill target monster ID for the currently selected defense in Column 3
+  const effectivePriorityKillId = useMemo(() => {
+    if (!currentSelectedDefense) return null;
+    if (currentSelectedDefense.priorityTargetMonsterId) {
+      return currentSelectedDefense.priorityTargetMonsterId;
+    }
+    const counterWithKill = currentCounters.find((c) => Boolean(c.priorityTargetMonsterId));
+    return counterWithKill?.priorityTargetMonsterId || null;
+  }, [currentSelectedDefense, currentCounters]);
+
+  const handleToggleDefensePriorityKill = (monsterId: string) => {
+    if (!currentSelectedDefense || !onSaveDefense) return;
+    const newTargetId = currentSelectedDefense.priorityTargetMonsterId === monsterId ? null : monsterId;
+    const updated: SavedSiegeDefense = {
+      ...currentSelectedDefense,
+      priorityTargetMonsterId: newTargetId,
+    };
+    onSaveDefense(updated);
+  };
 
   // When clicking on a leader in Column 1:
   // "khi click vào Leader nào thì chỉ hiện đội hình liên quan đến leader đó thôi không hiện các đội của leader khác"
@@ -935,24 +979,34 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
               )}
             </div>
 
-            {/* Selected Defense Banner */}
+            {/* Selected Defense Banner in Column 3 with Red X on Priority Kill Target */}
             {currentSelectedDefense ? (
-              <div className="flex items-center justify-between gap-2 p-2 bg-slate-900 border border-teal-500/40 rounded-xl">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="flex items-center gap-1 shrink-0">
-                    <CompactMonsterIcon
-                      monster={getMonsterById(allMonsters, currentSelectedDefense.monsterIds[0])}
-                      isLeader={true}
-                      size="sm"
-                    />
-                    <CompactMonsterIcon
-                      monster={getMonsterById(allMonsters, currentSelectedDefense.monsterIds[1])}
-                      size="sm"
-                    />
-                    <CompactMonsterIcon
-                      monster={getMonsterById(allMonsters, currentSelectedDefense.monsterIds[2])}
-                      size="sm"
-                    />
+              <div className="flex items-center justify-between gap-2 p-2.5 bg-slate-900 border border-teal-500/40 rounded-xl shadow-md">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {currentSelectedDefense.monsterIds.map((monId, idx) => {
+                      const mon = getMonsterById(allMonsters, monId);
+                      const isKillTarget = monId === effectivePriorityKillId;
+                      return (
+                        <div
+                          key={idx}
+                          className="relative cursor-pointer group/kill transition-transform hover:scale-105 active:scale-95"
+                          onClick={() => handleToggleDefensePriorityKill(monId)}
+                          title={
+                            isKillTarget
+                              ? `🎯 Pet ưu tiên kill trước: ${mon?.name || ''}. Nhấp để hủy hoặc đổi pet khác`
+                              : `Nhấp để chọn ${mon?.name || `Pet ${idx + 1}`} làm mục tiêu ưu tiên kill trước`
+                          }
+                        >
+                          <CompactMonsterIcon
+                            monster={mon}
+                            isLeader={idx === 0}
+                            size="sm"
+                            isPriorityKill={isKillTarget}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                   <div className="min-w-0">
                     <div className="text-xs font-bold text-white truncate">
@@ -1094,11 +1148,6 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
                             {counter.difficulty && (
                               <span className="px-1.5 py-0.2 rounded bg-slate-800 text-amber-300 border border-slate-700 font-semibold">
                                 {counter.difficulty}
-                              </span>
-                            )}
-                            {counter.isCustom && (
-                              <span className="px-1.5 py-0.2 rounded bg-teal-500/20 text-teal-300 font-bold">
-                                Tự lưu
                               </span>
                             )}
                             {counter.petImages && counter.petImages.some(Boolean) && (

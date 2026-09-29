@@ -35,6 +35,7 @@ import {
   STORAGE_KEY_SIEGE_DEFENSES,
   seedDefaultDefensesToFirestore,
   findDuplicateSiegeDefense,
+  isSameMonsterTeam,
 } from '../../lib/siegeDefenseService';
 import {
   subscribeToSiegeCounters,
@@ -254,6 +255,13 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
 
   // Open modal to edit an existing counter
   const handleEditCounter = (counter: SiegeCounterStrategy) => {
+    if (counter.defenseMonsterIds && counter.defenseMonsterIds.length === 3) {
+      setDefenseIds([
+        counter.defenseMonsterIds[0],
+        counter.defenseMonsterIds[1],
+        counter.defenseMonsterIds[2],
+      ]);
+    }
     setEditingCounter(counter);
     setIsSaveCounterModalOpen(true);
   };
@@ -269,6 +277,24 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
       }
       return [counter, ...prev];
     });
+
+    // Also sync priorityTargetMonsterId to matching defense in savedDefenses if found!
+    if (counter.defenseMonsterIds) {
+      const matchingDefense = savedDefenses.find((d) =>
+        isSameMonsterTeam(d.monsterIds, counter.defenseMonsterIds)
+      );
+      if (
+        matchingDefense &&
+        counter.priorityTargetMonsterId !== undefined &&
+        matchingDefense.priorityTargetMonsterId !== counter.priorityTargetMonsterId
+      ) {
+        const updatedDefense: SavedSiegeDefense = {
+          ...matchingDefense,
+          priorityTargetMonsterId: counter.priorityTargetMonsterId,
+        };
+        handleSaveDefense(updatedDefense);
+      }
+    }
 
     setToastMessage('Đã lưu đội hình counter thành công!');
 
@@ -448,6 +474,7 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
         onEditCounter={handleEditCounter}
         onDeleteCounter={handleDeleteCounter}
         onSaveCounter={handleSaveCounter}
+        onSaveDefense={handleSaveDefense}
       />
 
       {/* Defense Monster Picker Modal */}
@@ -494,6 +521,16 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
         editingCounter={editingCounter}
         onOpenAddMonster={onOpenAddMonster}
         existingCounters={countersDatabase}
+        initialPriorityTargetMonsterId={
+          editingCounter?.priorityTargetMonsterId ||
+          savedDefenses.find((d) =>
+            isSameMonsterTeam(d.monsterIds, [
+              defenseIds[0] || '',
+              defenseIds[1] || '',
+              defenseIds[2] || '',
+            ])
+          )?.priorityTargetMonsterId
+        }
       />
 
       {/* Save / Edit Defense Modal */}

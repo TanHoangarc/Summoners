@@ -100,6 +100,7 @@ export const SaveDefenseModal: React.FC<SaveDefenseModalProps> = ({
       leaderMonsterId: leaderId || currentMonsterIds[0],
       notes: notes.trim() || undefined,
       createdAt: editingDefense ? editingDefense.createdAt : Date.now(),
+      priorityTargetMonsterId: editingDefense?.priorityTargetMonsterId,
     };
 
     onSave(savedRecord);
