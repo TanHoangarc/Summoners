@@ -10,6 +10,10 @@ import {
   Check,
   Eye,
   Crosshair,
+  RefreshCw,
+  Sparkles,
+  Calendar,
+  Layers,
 } from 'lucide-react';
 import { Monster, SiegeCounterStrategy } from '../../types';
 import { getMonsterById } from '../../utils/monsterHelpers';
@@ -78,6 +82,124 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
     slotIdx: number;
     rect: DOMRect;
   } | null>(null);
+
+  // Sync Existing History Image Modal State
+  const [syncModalSlotIndex, setSyncModalSlotIndex] = useState<number | null>(null);
+  const [previewingHistoryImageUrl, setPreviewingHistoryImageUrl] = useState<string | null>(null);
+  const [showAllMonstersHistory, setShowAllMonstersHistory] = useState(false);
+
+  // Helper to extract historical images for a specific monster across all existing counters
+  const getMonsterHistoryImages = (monsterId?: string | null) => {
+    if (!monsterId || !existingCounters || existingCounters.length === 0) return [];
+
+    const list: {
+      imageUrl: string;
+      counterId: string;
+      teamName: string;
+      defenseTeamName?: string;
+      date?: string;
+      difficulty?: string;
+    }[] = [];
+
+    const seenUrls = new Set<string>();
+
+    for (const c of existingCounters) {
+      if (!c.counterMonsterIds || !c.petImages) continue;
+
+      c.counterMonsterIds.forEach((id, sIdx) => {
+        if (id === monsterId && c.petImages?.[sIdx]) {
+          const url = c.petImages[sIdx];
+          if (url && !seenUrls.has(url)) {
+            seenUrls.add(url);
+
+            const teamName = c.counterMonsterIds
+              .map((mId) => getMonsterById(allMonsters, mId)?.name)
+              .filter(Boolean)
+              .join(' + ');
+
+            const defTeamName = c.defenseMonsterIds
+              ? c.defenseMonsterIds
+                  .map((mId) => getMonsterById(allMonsters, mId)?.name)
+                  .filter(Boolean)
+                  .join(' • ')
+              : undefined;
+
+            list.push({
+              imageUrl: url,
+              counterId: c.id,
+              teamName: teamName || 'Đội Counter',
+              defenseTeamName: defTeamName ? `Khắc chế: ${defTeamName}` : undefined,
+              date: c.date,
+              difficulty: c.difficulty,
+            });
+          }
+        }
+      });
+    }
+
+    return list;
+  };
+
+  // Collect all historical images across all monsters for broad browsing
+  const allHistoryImages = useMemo(() => {
+    if (!existingCounters || existingCounters.length === 0) return [];
+    const list: {
+      imageUrl: string;
+      monster?: Monster | null;
+      counterId: string;
+      teamName: string;
+      defenseTeamName?: string;
+      date?: string;
+      difficulty?: string;
+    }[] = [];
+    const seen = new Set<string>();
+
+    for (const c of existingCounters) {
+      if (!c.counterMonsterIds || !c.petImages) continue;
+      c.counterMonsterIds.forEach((id, sIdx) => {
+        const url = c.petImages?.[sIdx];
+        if (url && !seen.has(url)) {
+          seen.add(url);
+
+          const teamName = c.counterMonsterIds
+            .map((mId) => getMonsterById(allMonsters, mId)?.name)
+            .filter(Boolean)
+            .join(' + ');
+
+          const defTeamName = c.defenseMonsterIds
+            ? c.defenseMonsterIds
+                .map((mId) => getMonsterById(allMonsters, mId)?.name)
+                .filter(Boolean)
+                .join(' • ')
+            : undefined;
+
+          list.push({
+            imageUrl: url,
+            monster: getMonsterById(allMonsters, id),
+            counterId: c.id,
+            teamName: teamName || 'Đội Counter',
+            defenseTeamName: defTeamName ? `Khắc chế: ${defTeamName}` : undefined,
+            date: c.date,
+            difficulty: c.difficulty,
+          });
+        }
+      });
+    }
+    return list;
+  }, [existingCounters, allMonsters]);
+
+  const handleApplyHistoryImage = (imageUrl: string) => {
+    if (syncModalSlotIndex === null) return;
+    const nextImages = [...petImages] as [string | null, string | null, string | null];
+    nextImages[syncModalSlotIndex] = imageUrl;
+    setPetImages(nextImages);
+
+    const mon = getMonsterById(allMonsters, counterSlots[syncModalSlotIndex]);
+    setSyncModalSlotIndex(null);
+    setPreviewingHistoryImageUrl(null);
+    setSuccessNotice(`Đã đồng bộ ảnh thành công cho ${mon?.name || `Pet ${syncModalSlotIndex + 1}`}!`);
+    setTimeout(() => setSuccessNotice(null), 3000);
+  };
 
   // Extract unique 3-monster counter teams from existing counters
   const distinctTeams = useMemo(() => {
@@ -220,6 +342,19 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
     editingImageSlot !== null
       ? getMonsterById(allMonsters, counterSlots[editingImageSlot])
       : null;
+
+  const currentEditingMonsterForSync =
+    syncModalSlotIndex !== null
+      ? getMonsterById(allMonsters, counterSlots[syncModalSlotIndex])
+      : null;
+
+  const currentSyncMonsterImages = currentEditingMonsterForSync
+    ? getMonsterHistoryImages(currentEditingMonsterForSync.id)
+    : [];
+
+  const displaySyncImages = showAllMonstersHistory
+    ? allHistoryImages
+    : currentSyncMonsterImages;
 
   return (
     <>
@@ -552,19 +687,44 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
                         </span>
 
                         {monster ? (
-                          <div className="mt-1 flex flex-col items-center gap-1">
+                          <div className="mt-1 flex flex-wrap items-center justify-center gap-1 w-full px-0.5">
+                            {/* Dán / Sửa ảnh */}
                             <button
                               type="button"
                               onClick={() => setEditingImageSlot(idx)}
-                              className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
+                              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
                                 hasImage
                                   ? 'bg-teal-500/20 text-teal-300 border-teal-500/40 hover:bg-teal-500/30'
                                   : 'bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700'
                               }`}
-                              title={hasImage ? 'Bấm để đổi hoặc xóa ảnh' : 'Bấm để dán ảnh thông tin Pet'}
+                              title={hasImage ? 'Bấm để đổi hoặc xóa ảnh' : 'Bấm để dán ảnh mới từ clipboard hoặc tải lên'}
                             >
                               <ImageIcon className="w-3 h-3 text-teal-400" />
-                              <span>{hasImage ? 'Đã có ảnh' : 'Dán ảnh'}</span>
+                              <span>{hasImage ? 'Ảnh' : 'Dán'}</span>
+                            </button>
+
+                            {/* Nút Đồng Bộ ảnh đã có */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSyncModalSlotIndex(idx);
+                                setShowAllMonstersHistory(false);
+                                setPreviewingHistoryImageUrl(null);
+                              }}
+                              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
+                                getMonsterHistoryImages(monster.id).length > 0
+                                  ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 hover:bg-cyan-500/30 shadow-sm'
+                                  : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-700'
+                              }`}
+                              title={`Đồng bộ ảnh đã có của ${monster.name} từ các lịch sử counter khác (${getMonsterHistoryImages(monster.id).length} ảnh)`}
+                            >
+                              <RefreshCw className="w-3 h-3 text-cyan-400 shrink-0" />
+                              <span>
+                                Đồng bộ
+                                {getMonsterHistoryImages(monster.id).length > 0
+                                  ? ` (${getMonsterHistoryImages(monster.id).length})`
+                                  : ''}
+                              </span>
                             </button>
                           </div>
                         ) : (
@@ -704,6 +864,295 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
             .filter(Boolean)
             .join(' + ')}
         />
+      )}
+
+      {/* ======================================================================= */}
+      {/* MODAL ĐỒNG BỘ ẢNH ĐÃ CÓ CHO PET TỪ LỊCH SỬ COUNTER */}
+      {/* ======================================================================= */}
+      {syncModalSlotIndex !== null && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-slate-900 border border-cyan-500/40 rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden text-slate-100">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-950/80">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 bg-cyan-500/15 text-cyan-400 rounded-xl border border-cyan-500/30 shrink-0">
+                  <RefreshCw className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm sm:text-base font-black text-white truncate flex items-center gap-2">
+                    <span>Đồng Bộ Ảnh Đã Có</span>
+                    {currentEditingMonsterForSync && (
+                      <span className="text-cyan-400 font-bold">• {currentEditingMonsterForSync.name}</span>
+                    )}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 truncate">
+                    Chọn ảnh chỉ số / rune đã lưu từ lịch sử các đội counter để gán vào vị trí Pet {syncModalSlotIndex + 1}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSyncModalSlotIndex(null);
+                  setPreviewingHistoryImageUrl(null);
+                }}
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Target Pet Preview Banner & Tabs */}
+            <div className="px-5 py-2.5 bg-slate-950/60 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <MonsterAvatar
+                  monster={currentEditingMonsterForSync}
+                  size="sm"
+                  showStars={false}
+                  showName={false}
+                />
+                <div>
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <span>{currentEditingMonsterForSync?.name || `Pet ${syncModalSlotIndex + 1}`}</span>
+                    <span className="text-[10px] text-slate-400">
+                      (Vị trí {syncModalSlotIndex === 0 ? 'Leader' : `Pet ${syncModalSlotIndex + 1}`})
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-400">
+                    Trạng thái hiện tại:{' '}
+                    {petImages[syncModalSlotIndex] ? (
+                      <span className="text-teal-400 font-semibold">Đã có 1 ảnh được gán</span>
+                    ) : (
+                      <span className="text-amber-400/80 italic">Chưa có ảnh nào</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tab switch button (Pet history vs All history) */}
+              <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setShowAllMonstersHistory(false)}
+                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                    !showAllMonstersHistory
+                      ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Ảnh của {currentEditingMonsterForSync?.name || 'Pet này'} (
+                  {currentSyncMonsterImages.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowAllMonstersHistory(true)}
+                  className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                    showAllMonstersHistory
+                      ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Tất cả quái thú ({allHistoryImages.length})
+                </button>
+              </div>
+            </div>
+
+            {/* Body: Images Grid */}
+            <div className="p-4 sm:p-5 overflow-y-auto max-h-[60vh] space-y-4">
+              {displaySyncImages.length === 0 ? (
+                <div className="py-12 px-4 text-center space-y-3 bg-slate-950/40 rounded-2xl border border-slate-800">
+                  <ImageIcon className="w-10 h-10 text-slate-600 mx-auto" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-slate-300">
+                      {!showAllMonstersHistory
+                        ? `Chưa có ảnh nào được lưu trước đây cho "${currentEditingMonsterForSync?.name}"`
+                        : 'Hệ thống chưa có ảnh nào được lưu trong các đội counter'}
+                    </p>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      {!showAllMonstersHistory
+                        ? 'Bạn có thể bấm "Tất cả quái thú" để chọn từ ảnh của các pet khác, hoặc dùng nút "Dán ảnh" để tải ảnh mới lên.'
+                        : 'Hãy dán ảnh thông tin hoặc tải ảnh lên để xây dựng kho ảnh cho các lần sử dụng tiếp theo!'}
+                    </p>
+                  </div>
+                  {!showAllMonstersHistory && allHistoryImages.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllMonstersHistory(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-cyan-300 font-bold text-xs border border-cyan-500/30 transition-all cursor-pointer"
+                    >
+                      <span>Xem ảnh của tất cả quái thú ({allHistoryImages.length})</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {displaySyncImages.map((item, i) => {
+                    const isCurrentlyUsed = petImages[syncModalSlotIndex] === item.imageUrl;
+                    return (
+                      <div
+                        key={i}
+                        className={`p-3 rounded-2xl border transition-all flex flex-col justify-between gap-3 ${
+                          isCurrentlyUsed
+                            ? 'bg-teal-950/30 border-teal-500/70 ring-1 ring-teal-500/40'
+                            : 'bg-slate-950/70 hover:bg-slate-900 border-slate-800 hover:border-cyan-500/40'
+                        }`}
+                      >
+                        {/* Thumbnail Container */}
+                        <div
+                          className="relative w-full h-40 sm:h-44 bg-slate-900 rounded-xl overflow-hidden border border-slate-800 group/thumb cursor-pointer flex items-center justify-center"
+                          onClick={() => setPreviewingHistoryImageUrl(item.imageUrl)}
+                          title="Bấm để xem ảnh phóng to"
+                        >
+                          <img
+                            src={item.imageUrl}
+                            alt={item.teamName}
+                            className="w-full h-full object-contain object-center transition-transform group-hover/thumb:scale-105"
+                            loading="lazy"
+                          />
+
+                          {/* Overlay Zoom Icon on hover */}
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity flex items-center justify-center">
+                            <span className="p-2 rounded-full bg-slate-900/90 text-cyan-300 border border-cyan-400/50 shadow-lg">
+                              <Eye className="w-5 h-5" />
+                            </span>
+                          </div>
+
+                          {isCurrentlyUsed && (
+                            <span className="absolute top-2 left-2 px-2 py-0.5 bg-teal-500 text-slate-950 text-[10px] font-black rounded-lg shadow-md border border-teal-300 flex items-center gap-1">
+                              <Check className="w-3 h-3 stroke-[3]" /> Đang chọn
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Metadata Source Info */}
+                        <div className="space-y-1 text-xs">
+                          <div className="font-bold text-white truncate flex items-center gap-1.5">
+                            <Swords className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                            <span className="truncate">{item.teamName}</span>
+                          </div>
+                          {item.defenseTeamName && (
+                            <div className="text-[11px] text-slate-400 truncate flex items-center gap-1.5">
+                              <Shield className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                              <span className="truncate">{item.defenseTeamName}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400 pt-0.5">
+                            {item.date && <span>📅 {item.date}</span>}
+                            {item.difficulty && (
+                              <span className="px-1.5 py-0.2 rounded bg-slate-800 text-amber-300 font-semibold border border-slate-700">
+                                {item.difficulty}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewingHistoryImageUrl(item.imageUrl)}
+                            className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Xem lớn</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleApplyHistoryImage(item.imageUrl)}
+                            disabled={isCurrentlyUsed}
+                            className={`flex-1 py-1.5 px-3 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              isCurrentlyUsed
+                                ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40 cursor-default'
+                                : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md hover:shadow-cyan-500/25 active:scale-95'
+                            }`}
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            <span>{isCurrentlyUsed ? 'Đã gán cho pet' : 'Gán ảnh này'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-slate-800 bg-slate-950/80 flex items-center justify-between text-xs">
+              <span className="text-[11px] text-slate-400">
+                💡 Chọn ảnh giúp bạn tái sử dụng nhanh bảng rune đã lưu mà không cần chụp lại.
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setSyncModalSlotIndex(null);
+                  setPreviewingHistoryImageUrl(null);
+                }}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================================= */}
+      {/* LIGHTBOX PHÓNG TO ẢNH TRONG KHO LỊCH SỬ */}
+      {/* ======================================================================= */}
+      {previewingHistoryImageUrl && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-5 bg-black/90 backdrop-blur-md animate-in fade-in duration-150 cursor-pointer"
+          onClick={() => setPreviewingHistoryImageUrl(null)}
+        >
+          <div
+            className="relative max-w-3xl max-h-[90vh] bg-slate-950 rounded-2xl overflow-hidden border border-slate-700 shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-bold text-white">Xem chi tiết ảnh</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewingHistoryImageUrl(null)}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-2 overflow-auto max-h-[75vh] flex items-center justify-center bg-slate-950">
+              <img
+                src={previewingHistoryImageUrl}
+                alt="Preview"
+                className="max-w-full max-h-[72vh] object-contain rounded-lg"
+              />
+            </div>
+
+            {syncModalSlotIndex !== null && (
+              <div className="p-3 bg-slate-900 border-t border-slate-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPreviewingHistoryImageUrl(null)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer transition-all"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyHistoryImage(previewingHistoryImageUrl)}
+                  className="px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs cursor-pointer shadow-md transition-all flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>Gán ảnh này vào Pet</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </>
   );
