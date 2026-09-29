@@ -6,7 +6,6 @@ import {
   Edit2,
   BookmarkCheck,
   RotateCcw,
-  Sparkles,
   X,
   Plus,
   AlertTriangle,
@@ -16,13 +15,14 @@ import {
   Swords,
   CheckCircle,
   Pencil,
-  Loader2,
   Layers,
   ArrowRight,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { Monster, SavedSiegeDefense, SiegeCounterStrategy } from '../../types';
 import { getMonsterById, ELEMENT_COLORS } from '../../utils/monsterHelpers';
 import { isSameMonsterTeam, findDuplicateSiegeDefense } from '../../lib/siegeDefenseService';
+import { PetInfoImageModal } from './PetInfoImageModal';
 
 interface SavedDefensesListProps {
   savedDefenses: SavedSiegeDefense[];
@@ -39,7 +39,8 @@ interface SavedDefensesListProps {
   onOpenAddCounter: (defense: SavedSiegeDefense) => void;
   onEditCounter: (counter: SiegeCounterStrategy) => void;
   onDeleteCounter: (counterId: string) => void;
-  onAIGenerateForCounter: (counter: SiegeCounterStrategy) => void;
+  onSaveCounter?: (counter: SiegeCounterStrategy) => void;
+  onAIGenerateForCounter?: (counter: SiegeCounterStrategy) => void;
   aiLoadingCounterId?: string | null;
 }
 
@@ -118,8 +119,7 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
   onOpenAddCounter,
   onEditCounter,
   onDeleteCounter,
-  onAIGenerateForCounter,
-  aiLoadingCounterId,
+  onSaveCounter,
 }) => {
   // Cột 1: Quick leader search input
   const [leaderSearchTerm, setLeaderSearchTerm] = useState('');
@@ -131,8 +131,21 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
   const [isLeaderCollapsed, setIsLeaderCollapsed] = useState(false);
   // Selected Defense in Cột 2 (shows counters in Cột 3)
   const [selectedDefenseId, setSelectedDefenseId] = useState<string | null>(null);
-  // Expanded strategies in Column 3
-  const [expandedStrategyIds, setExpandedStrategyIds] = useState<Record<string, boolean>>({});
+
+  // State for editing pet info image from Column 3
+  const [editingPetImageContext, setEditingPetImageContext] = useState<{
+    counter: SiegeCounterStrategy;
+    slotIndex: number;
+    monster?: Monster | null;
+  } | null>(null);
+
+  // Floating tooltip state on hover for pet info image preview
+  const [hoveredPetTooltip, setHoveredPetTooltip] = useState<{
+    monster?: Monster | null;
+    imageUrl?: string | null;
+    slotIndex: number;
+    rect: DOMRect;
+  } | null>(null);
 
   // Mobile / small screen tab switcher: 'column1' | 'column2' | 'column3'
   const [mobileTab, setMobileTab] = useState<'column1' | 'column2' | 'column3'>('column1');
@@ -980,21 +993,75 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
                 const c1 = getMonsterById(allMonsters, counter.counterMonsterIds[0]);
                 const c2 = getMonsterById(allMonsters, counter.counterMonsterIds[1]);
                 const c3 = getMonsterById(allMonsters, counter.counterMonsterIds[2]);
-                const isExpanded = Boolean(expandedStrategyIds[counter.id]);
 
                 return (
                   <div
                     key={counter.id}
-                    className="p-3 bg-slate-900/90 border border-slate-800/90 hover:border-slate-700/90 rounded-2xl space-y-2.5 shadow-md transition-all"
+                    className="p-3 bg-slate-900/90 border border-slate-800/90 hover:border-slate-700/90 rounded-2xl space-y-2 shadow-md transition-all"
                   >
                     {/* Counter Header: 3 Pet Avatars + Names + Actions */}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        {/* 3 Counter avatars */}
-                        <div className="flex items-center gap-1">
-                          <CompactMonsterIcon monster={c1} isLeader={true} size="sm" />
-                          <CompactMonsterIcon monster={c2} size="sm" />
-                          <CompactMonsterIcon monster={c3} size="sm" />
+                        {/* 3 Counter avatars with quick photo edit & hover tooltip */}
+                        <div className="flex items-center gap-1.5">
+                          {[
+                            { monster: c1, slotIdx: 0, isLeader: true },
+                            { monster: c2, slotIdx: 1, isLeader: false },
+                            { monster: c3, slotIdx: 2, isLeader: false },
+                          ].map(({ monster, slotIdx, isLeader }) => {
+                            const imgUrl = counter.petImages?.[slotIdx];
+                            const hasImage = Boolean(imgUrl);
+
+                            return (
+                              <div
+                                key={slotIdx}
+                                className="relative flex flex-col items-center group/pet"
+                                onMouseEnter={(e) => {
+                                  const rect = e.currentTarget.getBoundingClientRect();
+                                  setHoveredPetTooltip({
+                                    monster,
+                                    imageUrl: imgUrl,
+                                    slotIndex: slotIdx,
+                                    rect,
+                                  });
+                                }}
+                                onMouseLeave={() => setHoveredPetTooltip(null)}
+                              >
+                                <div className="relative">
+                                  <CompactMonsterIcon monster={monster} isLeader={isLeader} size="sm" />
+
+                                  {/* Edit / Attach info image button at each pet position */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEditingPetImageContext({
+                                        counter,
+                                        slotIndex: slotIdx,
+                                        monster,
+                                      });
+                                    }}
+                                    className={`absolute -bottom-1 -right-1 p-0.5 rounded-full shadow-md transition-all cursor-pointer border ${
+                                      hasImage
+                                        ? 'bg-teal-500 hover:bg-teal-400 text-slate-950 border-teal-300 ring-1 ring-teal-400'
+                                        : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-teal-300 border-slate-700'
+                                    }`}
+                                    title={
+                                      hasImage
+                                        ? `Đã có ảnh thông tin cho ${monster?.name || `Pet ${slotIdx + 1}`}. Nhấp để sửa/đổi ảnh`
+                                        : `Chưa có ảnh. Nhấp để dán/tải ảnh thông tin cho ${monster?.name || `Pet ${slotIdx + 1}`}`
+                                    }
+                                  >
+                                    {hasImage ? (
+                                      <ImageIcon className="w-2.5 h-2.5" />
+                                    ) : (
+                                      <Pencil className="w-2.5 h-2.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
 
                         {/* Names & Difficulty */}
@@ -1013,88 +1080,36 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
                                 Tự lưu
                               </span>
                             )}
+                            {counter.petImages && counter.petImages.some(Boolean) && (
+                              <span className="px-1.5 py-0.2 rounded bg-teal-500/10 text-teal-400 text-[9px] font-bold border border-teal-500/20 flex items-center gap-1">
+                                <ImageIcon className="w-2.5 h-2.5" />
+                                <span>{counter.petImages.filter(Boolean).length}/3 ảnh</span>
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
 
-                      {/* Action buttons (Edit, Delete, Details) */}
+                      {/* Action buttons (Edit Counter, Delete Counter) */}
                       <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
                           onClick={() => onEditCounter(counter)}
-                          className="p-1 text-slate-400 hover:text-teal-300 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
-                          title="Sửa chiến thuật counter này"
+                          className="p-1.5 text-slate-400 hover:text-teal-300 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                          title="Sửa đội hình counter này"
                         >
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
                         <button
                           type="button"
                           onClick={() => onDeleteCounter(counter.id)}
-                          className="p-1 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
+                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                           title="Xóa counter này"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedStrategyIds((prev) => ({
-                              ...prev,
-                              [counter.id]: !prev[counter.id],
-                            }))
-                          }
-                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <span>{isExpanded ? 'Thu gọn' : 'Chi tiết'}</span>
-                          {isExpanded ? (
-                            <ChevronUp className="w-3 h-3" />
-                          ) : (
-                            <ChevronDown className="w-3 h-3" />
-                          )}
-                        </button>
                       </div>
                     </div>
-
-                    {/* Expandable Strategy Details */}
-                    {isExpanded && (
-                      <div className="pt-2 border-t border-slate-800 space-y-2 animate-in fade-in duration-150 text-xs">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-bold text-slate-300">
-                            Chiến thuật đánh & Chỉ số yêu cầu:
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => onAIGenerateForCounter(counter)}
-                            disabled={aiLoadingCounterId === counter.id}
-                            className="flex items-center gap-1 px-2 py-0.5 bg-teal-500/15 hover:bg-teal-500/25 text-teal-300 rounded-md text-[10px] font-bold transition-all border border-teal-500/30 cursor-pointer disabled:opacity-60"
-                            title="Nhờ Gemini AI phân tích lại chiến thuật"
-                          >
-                            {aiLoadingCounterId === counter.id ? (
-                              <>
-                                <Loader2 className="w-3 h-3 animate-spin text-teal-400" />
-                                <span>Đang phân tích...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Sparkles className="w-3 h-3 text-teal-400" />
-                                <span>AI gợi ý lại</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-
-                        <div className="p-2.5 bg-slate-950/70 border border-slate-800 rounded-xl text-slate-300 whitespace-pre-line text-[11.5px] leading-relaxed font-sans">
-                          {counter.strategy}
-                        </div>
-
-                        {counter.turnOrder && (
-                          <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                            <span className="font-semibold text-slate-300">Thứ tự đánh:</span>
-                            <span className="text-teal-300">{counter.turnOrder}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 );
               })
@@ -1103,6 +1118,93 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
         </div>
       </div>
 
+      {/* Floating Pet Image Tooltip on Hover */}
+      {hoveredPetTooltip && (
+        <div
+          className="fixed z-[100] pointer-events-none animate-in fade-in zoom-in-95 duration-100"
+          style={{
+            left: `${Math.max(16, Math.min(hoveredPetTooltip.rect.left - 100, window.innerWidth - 380))}px`,
+            top: `${Math.max(16, Math.min(hoveredPetTooltip.rect.bottom + 8, window.innerHeight - 380))}px`,
+          }}
+        >
+          <div className="bg-slate-950/95 border-2 border-teal-500/80 rounded-2xl shadow-2xl p-2.5 max-w-[360px] backdrop-blur-md space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-white">
+                  {hoveredPetTooltip.monster?.name || `Pet ${hoveredPetTooltip.slotIndex + 1}`}
+                </span>
+                {hoveredPetTooltip.slotIndex === 0 && (
+                  <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                    Leader
+                  </span>
+                )}
+              </div>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                  hoveredPetTooltip.imageUrl
+                    ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
+                    : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {hoveredPetTooltip.imageUrl ? '📸 Ảnh thông tin / Rune' : 'Chưa có ảnh'}
+              </span>
+            </div>
+
+            {hoveredPetTooltip.imageUrl ? (
+              <div className="space-y-1">
+                <img
+                  src={hoveredPetTooltip.imageUrl}
+                  alt="Thông tin quái thú"
+                  className="max-h-[300px] max-w-full rounded-xl object-contain border border-slate-700/80 mx-auto shadow-md"
+                />
+                <div className="text-[10px] text-center text-slate-400">
+                  Nhấp nút ✏️ để thay đổi hoặc dán ảnh mới
+                </div>
+              </div>
+            ) : (
+              <div className="py-3 text-center text-xs text-slate-400 space-y-1">
+                <p>Pet này chưa có ảnh thông tin hoặc bảng rune.</p>
+                <p className="text-[11px] text-teal-400 font-medium">
+                  Bấm vào nút ✏️ ở góc pet để dán ảnh (Ctrl+V)
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Pet Info Image Edit Modal */}
+      {editingPetImageContext && (
+        <PetInfoImageModal
+          isOpen={Boolean(editingPetImageContext)}
+          onClose={() => setEditingPetImageContext(null)}
+          monster={editingPetImageContext.monster}
+          slotIndex={editingPetImageContext.slotIndex}
+          currentImageUrl={
+            editingPetImageContext.counter.petImages?.[editingPetImageContext.slotIndex]
+          }
+          onSaveImage={(imageUrl) => {
+            const currentImages = editingPetImageContext.counter.petImages || [null, null, null];
+            const nextImages = [...currentImages] as [string | null, string | null, string | null];
+            nextImages[editingPetImageContext.slotIndex] = imageUrl;
+
+            const updatedCounter: SiegeCounterStrategy = {
+              ...editingPetImageContext.counter,
+              petImages: nextImages,
+              updatedAt: new Date().toISOString(),
+            };
+
+            if (onSaveCounter) {
+              onSaveCounter(updatedCounter);
+            }
+            setEditingPetImageContext(null);
+          }}
+          teamTitle={editingPetImageContext.counter.counterMonsterIds
+            .map((id) => getMonsterById(allMonsters, id)?.name)
+            .filter(Boolean)
+            .join(' + ')}
+        />
+      )}
     </div>
   );
 };

@@ -45,11 +45,12 @@ export interface SiegeCounterStrategy {
   ratingCount?: number;
   author?: string;
   date: string;
-  strategy: string;
+  strategy?: string;
   turnOrder?: string;
   difficulty?: 'Dễ' | 'Trung bình' | 'Yêu cầu rune cao';
   isCustom?: boolean;
   updatedAt?: string;
+  petImages?: [string | null, string | null, string | null];
 }
 
 export interface SavedSiegeDefense {

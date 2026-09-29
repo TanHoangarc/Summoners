@@ -447,8 +447,7 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
         onOpenAddCounter={handleOpenAddCounter}
         onEditCounter={handleEditCounter}
         onDeleteCounter={handleDeleteCounter}
-        onAIGenerateForCounter={handleAIGenerateForCounter}
-        aiLoadingCounterId={aiLoadingCounterId}
+        onSaveCounter={handleSaveCounter}
       />
 
       {/* Defense Monster Picker Modal */}
