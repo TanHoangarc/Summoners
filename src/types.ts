@@ -40,7 +40,7 @@ export interface RTAMatchRecord {
 export interface SiegeCounterStrategy {
   id: string;
   defenseMonsterIds: [string, string, string];
-  counterMonsterIds: [string, string, string];
+  counterMonsterIds: string[];
   rating?: number;
   ratingCount?: number;
   author?: string;
@@ -50,7 +50,7 @@ export interface SiegeCounterStrategy {
   difficulty?: 'Dễ' | 'Trung bình' | 'Yêu cầu rune cao';
   isCustom?: boolean;
   updatedAt?: string;
-  petImages?: [string | null, string | null, string | null];
+  petImages?: (string | null)[];
   priorityTargetMonsterId?: string | null;
 }
 

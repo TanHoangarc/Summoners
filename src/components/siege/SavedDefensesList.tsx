@@ -1060,25 +1060,27 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
               </div>
             ) : (
               currentCounters.map((counter) => {
-                const c1 = getMonsterById(allMonsters, counter.counterMonsterIds[0]);
-                const c2 = getMonsterById(allMonsters, counter.counterMonsterIds[1]);
-                const c3 = getMonsterById(allMonsters, counter.counterMonsterIds[2]);
+                const counterMonsters = counter.counterMonsterIds
+                  .map((id, slotIdx) => ({
+                    monster: getMonsterById(allMonsters, id),
+                    slotIdx,
+                    isLeader: slotIdx === 0,
+                  }))
+                  .filter((item): item is { monster: Monster; slotIdx: number; isLeader: boolean } =>
+                    Boolean(item.monster)
+                  );
 
                 return (
                   <div
                     key={counter.id}
                     className="p-3 bg-slate-900/90 border border-slate-800/90 hover:border-slate-700/90 rounded-2xl space-y-2 shadow-md transition-all"
                   >
-                    {/* Counter Header: 3 Pet Avatars + Names + Actions */}
+                    {/* Counter Header: Pet Avatars (1 to 3 pets) + Names + Actions */}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        {/* 3 Counter avatars with quick photo edit & hover tooltip */}
+                        {/* Counter avatars with quick photo edit & hover tooltip */}
                         <div className="flex items-center gap-1.5">
-                          {[
-                            { monster: c1, slotIdx: 0, isLeader: true },
-                            { monster: c2, slotIdx: 1, isLeader: false },
-                            { monster: c3, slotIdx: 2, isLeader: false },
-                          ].map(({ monster, slotIdx, isLeader }) => {
+                          {counterMonsters.map(({ monster, slotIdx, isLeader }) => {
                             const imgUrl = counter.petImages?.[slotIdx];
                             const hasImage = Boolean(imgUrl);
 
@@ -1139,10 +1141,23 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
                           })}
                         </div>
 
-                        {/* Names & Difficulty */}
+                        {/* Names, Solo/Duo Tag & Difficulty */}
                         <div className="min-w-0">
-                          <div className="text-xs font-bold text-white truncate">
-                            {[c1?.name, c2?.name, c3?.name].filter(Boolean).join(' + ')}
+                          <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                            <span className="truncate">
+                              {counterMonsters.map((item) => item.monster.name).join(' + ') ||
+                                'Đội hình counter'}
+                            </span>
+                            {counterMonsters.length === 1 && (
+                              <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-black uppercase shrink-0">
+                                Solo
+                              </span>
+                            )}
+                            {counterMonsters.length === 2 && (
+                              <span className="px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[9px] font-black uppercase shrink-0">
+                                2 Pet
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5">
                             {counter.difficulty && (
@@ -1153,7 +1168,10 @@ export const SavedDefensesList: React.FC<SavedDefensesListProps> = ({
                             {counter.petImages && counter.petImages.some(Boolean) && (
                               <span className="px-1.5 py-0.2 rounded bg-teal-500/10 text-teal-400 text-[9px] font-bold border border-teal-500/20 flex items-center gap-1">
                                 <ImageIcon className="w-2.5 h-2.5" />
-                                <span>{counter.petImages.filter(Boolean).length}/3 ảnh</span>
+                                <span>
+                                  {counter.petImages.filter(Boolean).length}/
+                                  {counterMonsters.length} ảnh
+                                </span>
                               </span>
                             )}
                           </div>

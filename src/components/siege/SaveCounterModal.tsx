@@ -201,7 +201,7 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
     setTimeout(() => setSuccessNotice(null), 3000);
   };
 
-  // Extract unique 3-monster counter teams from existing counters
+  // Extract unique counter teams from existing counters (1, 2, or 3 monsters)
   const distinctTeams = useMemo(() => {
     if (!existingCounters || existingCounters.length === 0) return [];
 
@@ -209,31 +209,31 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
       string,
       {
         id: string;
-        monsterIds: [string, string, string];
+        monsterIds: (string | null)[];
         monsters: (Monster | undefined)[];
         name: string;
         difficulty?: string;
-        petImages?: [string | null, string | null, string | null];
+        petImages?: (string | null)[];
       }
     >();
 
     for (const c of existingCounters) {
-      if (!c.counterMonsterIds || c.counterMonsterIds.length < 3) continue;
-      const [m1Id, m2Id, m3Id] = c.counterMonsterIds;
-      if (!m1Id || !m2Id || !m3Id) continue;
+      if (!c.counterMonsterIds || c.counterMonsterIds.length === 0) continue;
+      const validIds = c.counterMonsterIds.filter(Boolean);
+      if (validIds.length === 0) continue;
 
-      const sortedKey = [m1Id, m2Id, m3Id].sort().join('__');
+      const sortedKey = [...validIds].sort().join('__');
       if (!map.has(sortedKey)) {
-        const mon1 = getMonsterById(allMonsters, m1Id);
-        const mon2 = getMonsterById(allMonsters, m2Id);
-        const mon3 = getMonsterById(allMonsters, m3Id);
-        const name = [mon1?.name, mon2?.name, mon3?.name].filter(Boolean).join(' + ');
+        const monsters = validIds.map((id) => getMonsterById(allMonsters, id));
+        const baseName = monsters.map((m) => m?.name).filter(Boolean).join(' + ');
+        const teamTag = validIds.length === 1 ? ' (Solo)' : validIds.length === 2 ? ' (Duo)' : '';
+        const name = baseName ? `${baseName}${teamTag}` : `Đội hình ${validIds.length} quái thú`;
 
         map.set(sortedKey, {
           id: c.id,
-          monsterIds: [m1Id, m2Id, m3Id],
-          monsters: [mon1, mon2, mon3],
-          name: name || 'Team 3 quái thú',
+          monsterIds: [validIds[0] || null, validIds[1] || null, validIds[2] || null],
+          monsters: monsters,
+          name: name,
           difficulty: c.difficulty,
           petImages: c.petImages,
         });
@@ -253,14 +253,24 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
   }, [distinctTeams, teamSearchQuery]);
 
   const handleSelectQuickTeam = (team: {
-    monsterIds: [string, string, string];
+    monsterIds: (string | null)[];
     name: string;
     difficulty?: string;
-    petImages?: [string | null, string | null, string | null];
+    petImages?: (string | null)[];
   }) => {
-    setCounterSlots([team.monsterIds[0], team.monsterIds[1], team.monsterIds[2]]);
-    if (team.petImages) {
-      setPetImages(team.petImages);
+    setCounterSlots([
+      team.monsterIds[0] || null,
+      team.monsterIds[1] || null,
+      team.monsterIds[2] || null,
+    ]);
+    if (team.petImages && team.petImages.length > 0) {
+      setPetImages([
+        team.petImages[0] || null,
+        team.petImages[1] || null,
+        team.petImages[2] || null,
+      ]);
+    } else {
+      setPetImages([null, null, null]);
     }
 
     if (team.difficulty && ['Dễ', 'Trung bình', 'Yêu cầu rune cao'].includes(team.difficulty)) {
@@ -280,7 +290,11 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
           editingCounter.counterMonsterIds[1] || null,
           editingCounter.counterMonsterIds[2] || null,
         ]);
-        setPetImages(editingCounter.petImages || [null, null, null]);
+        setPetImages([
+          editingCounter.petImages?.[0] || null,
+          editingCounter.petImages?.[1] || null,
+          editingCounter.petImages?.[2] || null,
+        ]);
         setDifficulty(editingCounter.difficulty || 'Trung bình');
         setPriorityTargetMonsterId(
           editingCounter.priorityTargetMonsterId !== undefined
@@ -313,15 +327,23 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
       return;
     }
 
-    if (!counterSlots[0] || !counterSlots[1] || !counterSlots[2]) {
-      setError('Vui lòng chọn đủ 3 quái thú cho đội hình counter!');
+    // Collect non-empty counter monsters and their corresponding images
+    const selectedSlotsWithImages = counterSlots
+      .map((id, idx) => ({ id, image: petImages[idx] }))
+      .filter((item): item is { id: string; image: string | null } => Boolean(item.id));
+
+    if (selectedSlotsWithImages.length === 0) {
+      setError('Vui lòng chọn ít nhất 1 quái thú cho đội hình counter (1, 2 hoặc 3 quái thú)!');
       return;
     }
+
+    const compactCounterIds = selectedSlotsWithImages.map((s) => s.id);
+    const compactPetImages = selectedSlotsWithImages.map((s) => s.image);
 
     const savedCounter: SiegeCounterStrategy = {
       id: editingCounter ? editingCounter.id : `counter-custom-${Date.now()}`,
       defenseMonsterIds: [defenseIds[0], defenseIds[1], defenseIds[2]],
-      counterMonsterIds: [counterSlots[0], counterSlots[1], counterSlots[2]],
+      counterMonsterIds: compactCounterIds,
       rating: editingCounter?.rating || 5.0,
       ratingCount: editingCounter ? editingCounter.ratingCount || 1 : 1,
       author: editingCounter?.author || '',
@@ -330,7 +352,7 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
       strategy: editingCounter?.strategy || '',
       isCustom: true,
       updatedAt: new Date().toISOString(),
-      petImages: petImages,
+      petImages: compactPetImages,
       priorityTargetMonsterId: priorityTargetMonsterId || null,
     };
 
@@ -517,12 +539,17 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
               </div>
             </div>
 
-            {/* 3 Counter Monster Pickers */}
+            {/* Counter Monster Pickers (1 to 3 pets) */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between gap-2">
-                <label className="block text-xs font-bold text-teal-300 uppercase tracking-wider">
-                  Chọn 3 Quái Thú Counter Của Bạn:
-                </label>
+                <div className="space-y-0.5">
+                  <label className="block text-xs font-bold text-teal-300 uppercase tracking-wider">
+                    Chọn Quái Thú Counter (1 - 3 Pet):
+                  </label>
+                  <p className="text-[10px] text-slate-400">
+                    Không bắt buộc đủ 3 pet (hỗ trợ đánh 1 pet Solo hoặc 2 pet Duo)
+                  </p>
+                </div>
                 <button
                   type="button"
                   onClick={() => setIsTeamPickerOpen((prev) => !prev)}
@@ -637,7 +664,7 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
                           onClick={() => {
                             setActiveSlotIndex(idx);
                           }}
-                          emptyLabel={`Pet ${idx + 1}`}
+                          emptyLabel={idx === 0 ? 'Pet 1 (Chính)' : `Pet ${idx + 1} (Tùy chọn)`}
                           onClear={
                             slotId
                               ? () => {
@@ -683,7 +710,11 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
 
                       <div className="w-full">
                         <span className="text-xs font-bold text-white block truncate px-1">
-                          {monster ? monster.name : `Chọn Pet ${idx + 1}`}
+                          {monster
+                            ? monster.name
+                            : idx === 0
+                            ? 'Chọn Pet 1'
+                            : `Pet ${idx + 1} (Trống)`}
                         </span>
 
                         {monster ? (
@@ -733,7 +764,7 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
                             onClick={() => setActiveSlotIndex(idx)}
                             className="mt-1 text-[11px] text-teal-400 hover:text-teal-300 font-medium underline underline-offset-2 cursor-pointer"
                           >
-                            + Chọn ngay
+                            {idx === 0 ? '+ Chọn pet' : '+ Thêm (tùy chọn)'}
                           </button>
                         )}
                       </div>
@@ -778,7 +809,7 @@ export const SaveCounterModal: React.FC<SaveCounterModalProps> = ({
 
               <button
                 type="submit"
-                disabled={!counterSlots[0] || !counterSlots[1] || !counterSlots[2]}
+                disabled={!counterSlots[0] && !counterSlots[1] && !counterSlots[2]}
                 className="px-6 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-600 text-slate-950 font-black rounded-xl text-xs shadow-md transition-all cursor-pointer disabled:cursor-not-allowed flex items-center gap-1.5"
               >
                 <Check className="w-4 h-4 stroke-[3]" />

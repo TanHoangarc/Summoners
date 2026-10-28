@@ -312,8 +312,8 @@ export const SiegeView: React.FC<SiegeViewProps> = ({
       .map((id) => getMonsterById(allMonsters, id))
       .filter(Boolean) as Monster[];
 
-    if (validDefMonsters.length < 3 || validCMonsters.length < 3) {
-      setToastMessage('Cần đủ 3 quái thú Defense và 3 quái thú Counter để AI phân tích!');
+    if (validDefMonsters.length < 3 || validCMonsters.length < 1) {
+      setToastMessage('Cần đủ 3 quái thú Defense và ít nhất 1 quái thú Counter để AI phân tích!');
       return;
     }
 
